@@ -1,0 +1,2810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Crown Clash — Royal Arena</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-display: 'Fredoka', 'Inter', sans-serif;
+      --font-body: 'Inter', sans-serif;
+    }
+    * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100dvh;
+      height: -webkit-fill-available;
+      overflow: hidden;
+      overscroll-behavior: none;
+      background: radial-gradient(circle at 50% 20%, #1e293b 0%, #0b1120 100%);
+      font-family: var(--font-body);
+      color: #f8fafc;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #app {
+      height: 100dvh;
+      height: -webkit-fill-available;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #arena-canvas, #hand-cards {
+      touch-action: none;
+    }
+    .font-display { font-family: var(--font-display); }
+
+    .custom-scroll::-webkit-scrollbar { width: 6px; }
+    .custom-scroll::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.4); border-radius: 99px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 99px; }
+
+    .battle-card {
+      transition: transform 0.14s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.14s ease, filter 0.14s ease;
+    }
+    .battle-card.playable:hover {
+      transform: translateY(-4px);
+    }
+    .battle-card.selected {
+      transform: translateY(-10px) scale(1.05);
+      box-shadow: 0 0 0 3px #facc15, 0 12px 24px rgba(250, 204, 21, 0.35);
+    }
+    .battle-card.disabled {
+      filter: grayscale(0.75) brightness(0.65);
+      cursor: not-allowed;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 12px rgba(192, 132, 252, 0.5); }
+      50% { box-shadow: 0 0 22px rgba(217, 70, 239, 0.9); }
+    }
+    .elixir-full { animation: pulseGlow 1.3s infinite ease-in-out; }
+
+    @keyframes popIn {
+      0% { transform: scale(0.75); opacity: 0; }
+      70% { transform: scale(1.06); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .pop-in { animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+  </style>
+</head>
+<body class="flex flex-col items-center justify-center">
+
+  <div id="app" class="relative w-full h-full max-w-[540px] flex flex-col bg-slate-950/90 shadow-2xl border-x border-slate-800/80 overflow-hidden">
+
+    <!-- TOP HUD (In-Battle) -->
+    <header id="battle-hud" class="flex items-center justify-between px-3 py-1.5 bg-slate-900/95 border-b border-slate-800 z-20 shrink-0">
+      <div class="flex items-center gap-2">
+        <button id="btn-back-menu" title="Back to Deck & Menu" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition">
+          ☰ Menu
+        </button>
+        <div class="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700/60">
+          <span class="text-sky-400 font-display font-bold text-sm" id="hud-blue-crowns">0</span>
+          <span class="text-xs">👑</span>
+          <span class="text-slate-500 text-xs font-bold">vs</span>
+          <span class="text-xs">👑</span>
+          <span class="text-rose-400 font-display font-bold text-sm" id="hud-red-crowns">0</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <div id="hud-elixir-mult" class="hidden px-2 py-0.5 rounded-full bg-fuchsia-600/30 border border-fuchsia-400/50 text-fuchsia-300 font-display font-bold text-xs animate-pulse">
+          2x ELIXIR
+        </div>
+        <div id="hud-timer" class="font-display font-bold text-base tracking-wide px-2.5 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-amber-300">
+          3:00
+        </div>
+        <button id="btn-mute" title="Toggle Sound" class="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-sm transition">
+          🔊
+        </button>
+      </div>
+    </header>
+
+    <!-- ARENA CANVAS WRAPPER -->
+    <main id="arena-wrap" class="relative flex-1 min-h-0 w-full flex items-center justify-center bg-slate-950 overflow-hidden">
+      <canvas id="arena-canvas" class="block w-full h-full cursor-crosshair"></canvas>
+
+      <div id="arena-banner" class="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-2 rounded-2xl bg-slate-900/90 border-2 border-amber-400/80 shadow-2xl text-center hidden z-20">
+        <div id="arena-banner-title" class="font-display font-bold text-xl text-amber-300 tracking-wide">DOUBLE ELIXIR!</div>
+        <div id="arena-banner-sub" class="text-xs text-slate-300 font-medium">Elixir regenerates 2x faster</div>
+      </div>
+
+      <div id="arena-toast" class="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-rose-950/90 border border-rose-500/60 text-rose-200 text-xs font-semibold hidden z-20">
+        Deploy in highlighted territory!
+      </div>
+    </main>
+
+    <!-- BOTTOM WOODEN CARD DOCK (Clash-style Tray) -->
+    <footer id="card-dock" class="shrink-0 border-t-4 border-[#a97c47] px-2 pt-2 pb-2 z-20 shadow-[0_-8px_24px_rgba(0,0,0,0.6)]" style="background: linear-gradient(180deg, #754e29 0%, #56371a 60%, #3d2510 100%);">
+      <div class="flex items-end gap-2 mb-1.5">
+        <div class="flex flex-col items-center shrink-0">
+          <span class="text-[10px] font-display font-bold text-amber-100 drop-shadow mb-0.5">Next:</span>
+          <div id="next-card-slot" class="w-11 h-13 rounded-lg bg-[#2c1a0b]/90 border-2 border-[#a97c47] flex flex-col items-center justify-center p-1 shadow-inner"></div>
+        </div>
+        <div id="hand-cards" class="flex-1 grid grid-cols-4 gap-1.5 bg-[#3b2410]/80 p-1.5 rounded-xl border-2 border-[#946a3a] shadow-inner"></div>
+      </div>
+
+      <div class="flex items-center gap-2 pl-12">
+        <div class="relative w-7 h-7 rounded-full bg-gradient-to-br from-fuchsia-400 via-fuchsia-600 to-purple-800 border-2 border-fuchsia-200 flex items-center justify-center shadow-md shrink-0">
+          <span id="elixir-count" class="font-display font-bold text-sm text-white drop-shadow">5</span>
+        </div>
+        <div class="relative flex-1 h-4 bg-[#1f1208] rounded-full border-2 border-[#8c6233] overflow-hidden shadow-inner">
+          <div id="elixir-fill" class="h-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-400 transition-[width] duration-75" style="width: 50%;"></div>
+          <div class="absolute inset-0 grid grid-cols-10 pointer-events-none">
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div class="border-r border-[#1f1208]/70"></div>
+            <div></div>
+          </div>
+          <span class="absolute left-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-white/85 drop-shadow pointer-events-none">Max: 10</span>
+        </div>
+        <div class="text-[11px] font-display font-bold text-amber-200 shrink-0 w-9 text-right drop-shadow" id="elixir-rate-label">1.0x</div>
+      </div>
+    </footer>
+
+    <!-- PRE-MATCH MENU & DECK BUILDER OVERLAY -->
+    <section id="menu-overlay" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md z-30 flex flex-col overflow-hidden">
+      <div class="px-4 pt-4 pb-3 border-b border-slate-800 flex items-center justify-between bg-gradient-to-r from-indigo-950/70 via-slate-900 to-purple-950/70">
+        <div>
+          <h1 class="font-display font-bold text-2xl text-amber-300 tracking-tight leading-none">👑 CROWN CLASH</h1>
+          <p class="text-xs text-slate-400 mt-1">Real-time lane strategy • Build your 8-card deck &amp; battle</p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-menu-mute" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-sm">🔊</button>
+        </div>
+      </div>
+
+      <div class="px-4 py-2.5 bg-slate-900/70 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs font-semibold text-slate-400">AI:</span>
+          <select id="select-difficulty" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none">
+            <option value="easy">Apprentice</option>
+            <option value="normal" selected>Challenger</option>
+            <option value="hard">Grand Champion</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-2">
+          <label class="flex items-center gap-1.5 text-xs font-semibold text-fuchsia-300 cursor-pointer bg-fuchsia-950/40 border border-fuchsia-700/40 px-2.5 py-1 rounded-lg">
+            <input type="checkbox" id="toggle-2x-mode" class="accent-fuchsia-500">
+            <span>2x Elixir Blitz</span>
+          </label>
+          <button id="btn-random-deck" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-slate-200 transition">
+            🎲 Random
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto custom-scroll px-4 py-3 space-y-4">
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-display font-bold text-sm text-sky-300 uppercase tracking-wider">Your Battle Deck (<span id="deck-count">8</span>/8)</h2>
+            <span class="text-xs font-semibold text-fuchsia-300">Avg Elixir: <span id="deck-avg-elixir">3.8</span></span>
+          </div>
+          <div id="deck-grid" class="grid grid-cols-4 gap-2"></div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-display font-bold text-sm text-amber-300 uppercase tracking-wider">Character &amp; Card Roster (14)</h2>
+            <span class="text-[11px] text-slate-400">Tap card to add/remove or inspect</span>
+          </div>
+          <div id="roster-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+        </div>
+      </div>
+
+      <div class="px-4 py-3 bg-slate-900 border-t border-slate-800 space-y-2.5 shrink-0">
+        <div id="card-inspector" class="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs flex items-center justify-between gap-3">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <div id="insp-icon" class="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-xl shrink-0">⚔️</div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-1.5">
+                <span id="insp-name" class="font-display font-bold text-sm text-white truncate">Knight</span>
+                <span id="insp-cost" class="px-1.5 py-0.5 rounded bg-fuchsia-600/30 text-fuchsia-300 font-bold text-[10px]">3 Elixir</span>
+                <span id="insp-type" class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-semibold text-[10px]">Troop</span>
+              </div>
+              <p id="insp-desc" class="text-slate-400 text-[11px] truncate mt-0.5">Sturdy melee fighter with high HP and reliable strikes.</p>
+            </div>
+          </div>
+          <button id="btn-insp-toggle" class="px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs shrink-0 transition">
+            In Deck
+          </button>
+        </div>
+
+        <button id="btn-start-battle" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:brightness-110 active:scale-[0.99] text-slate-950 font-display font-bold text-lg tracking-wide shadow-lg shadow-amber-500/25 transition">
+          ⚔️ ENTER ARENA
+        </button>
+      </div>
+    </section>
+
+    <!-- END-OF-MATCH MODAL -->
+    <section id="result-overlay" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-40 flex items-center justify-center p-4">
+      <div class="pop-in w-full max-w-sm rounded-2xl bg-slate-900 border-2 border-amber-400/60 shadow-2xl p-6 text-center space-y-4">
+        <div id="result-badge" class="text-5xl">🏆</div>
+        <div>
+          <h2 id="result-title" class="font-display font-bold text-3xl text-amber-300">VICTORY!</h2>
+          <p id="result-sub" class="text-xs text-slate-400 mt-1">You claimed the arena crown!</p>
+        </div>
+
+        <div class="flex items-center justify-center gap-6 py-3 bg-slate-950/70 rounded-xl border border-slate-800">
+          <div class="text-center">
+            <div class="text-[11px] uppercase tracking-wider text-sky-400 font-bold">You</div>
+            <div id="result-blue-crowns" class="font-display font-bold text-3xl text-white mt-0.5">3</div>
+            <div class="text-xs">👑</div>
+          </div>
+          <div class="text-slate-600 font-display font-bold text-xl">VS</div>
+          <div class="text-center">
+            <div class="text-[11px] uppercase tracking-wider text-rose-400 font-bold">Opponent</div>
+            <div id="result-red-crowns" class="font-display font-bold text-3xl text-white mt-0.5">0</div>
+            <div class="text-xs">👑</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5 pt-1">
+          <button id="btn-edit-deck" class="py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-display font-bold text-sm transition">
+            Edit Deck
+          </button>
+          <button id="btn-play-again" class="py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-display font-bold text-sm shadow-lg transition">
+            Play Again
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      const rad = typeof r === 'number' ? Math.min(r, w / 2, h / 2) : 0;
+      this.moveTo(x + rad, y);
+      this.arcTo(x + w, y, x + w, y + h, rad);
+      this.arcTo(x + w, y + h, x, y + h, rad);
+      this.arcTo(x, y + h, x, y, rad);
+      this.arcTo(x, y, x + w, y, rad);
+      this.closePath();
+      return this;
+    };
+  }
+
+  // =========================================================================
+  // 1. SYNTHESIZED WEB AUDIO SOUND ENGINE
+  // =========================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+      this.muted = false;
+    }
+    unlock() {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) this.ctx = new AudioCtx();
+      }
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
+    }
+    toggleMute() {
+      this.muted = !this.muted;
+      return this.muted;
+    }
+    play(type) {
+      if (this.muted || !this.ctx) return;
+      try {
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        if (type === 'deploy') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(220, now);
+          osc.frequency.exponentialRampToValueAtTime(440, now + 0.11);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+          osc.start(now); osc.stop(now + 0.15);
+        } else if (type === 'hit') {
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(150, now);
+          osc.frequency.exponentialRampToValueAtTime(70, now + 0.06);
+          gain.gain.setValueAtTime(0.05, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+          osc.start(now); osc.stop(now + 0.075);
+        } else if (type === 'arrow') {
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(720, now);
+          osc.frequency.exponentialRampToValueAtTime(340, now + 0.08);
+          gain.gain.setValueAtTime(0.04, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          osc.start(now); osc.stop(now + 0.095);
+        } else if (type === 'fireball') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(140, now);
+          osc.frequency.exponentialRampToValueAtTime(38, now + 0.35);
+          gain.gain.setValueAtTime(0.22, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+          osc.start(now); osc.stop(now + 0.38);
+        } else if (type === 'zap') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(980, now);
+          osc.frequency.exponentialRampToValueAtTime(220, now + 0.16);
+          gain.gain.setValueAtTime(0.14, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+          osc.start(now); osc.stop(now + 0.19);
+        } else if (type === 'tower_down') {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(180, now);
+          osc.frequency.exponentialRampToValueAtTime(42, now + 0.55);
+          gain.gain.setValueAtTime(0.25, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+          osc.start(now); osc.stop(now + 0.6);
+        } else if (type === 'victory') {
+          [523.25, 659.25, 783.99, 1046.5].forEach((freq, i) => {
+            const o = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            o.type = 'triangle';
+            o.frequency.setValueAtTime(freq, now + i * 0.09);
+            g.gain.setValueAtTime(0.14, now + i * 0.09);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.32);
+            o.connect(g); g.connect(this.ctx.destination);
+            o.start(now + i * 0.09); o.stop(now + i * 0.09 + 0.34);
+          });
+        } else if (type === 'defeat') {
+          [392, 349.23, 311.13, 261.63].forEach((freq, i) => {
+            const o = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(freq, now + i * 0.12);
+            g.gain.setValueAtTime(0.09, now + i * 0.12);
+            g.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.3);
+            o.connect(g); g.connect(this.ctx.destination);
+            o.start(now + i * 0.12); o.stop(now + i * 0.12 + 0.32);
+          });
+        }
+      } catch (_) {}
+    }
+  }
+  const sfx = new SoundEngine();
+
+  // =========================================================================
+  // 2. CARD & CHARACTER DEFINITIONS (14 ORIGINAL CLASH-STYLE CARDS)
+  // =========================================================================
+  const ARENA_W = 18;
+  const ARENA_H = 32;
+
+  const CARDS = [
+    {
+      id: 'knight',
+      name: 'Vanguard Knight',
+      cost: 3,
+      type: 'troop',
+      count: 1,
+      hp: 1350,
+      dmg: 165,
+      hitSpeed: 1.1,
+      speed: 2.3,
+      range: 1.1,
+      sight: 5.5,
+      radius: 0.55,
+      targets: 'ground',
+      isFlying: false,
+      splash: 0,
+      color: '#38bdf8',
+      accent: '#e2e8f0',
+      icon: '⚔️',
+      role: 'Mini-Tank',
+      desc: 'Armored swordsman with high HP and steady melee strikes.'
+    },
+    {
+      id: 'archers',
+      name: 'Twin Archers',
+      cost: 3,
+      type: 'troop',
+      count: 2,
+      hp: 290,
+      dmg: 96,
+      hitSpeed: 0.9,
+      speed: 2.4,
+      range: 5.0,
+      sight: 6.2,
+      radius: 0.4,
+      targets: 'air_ground',
+      isFlying: false,
+      splash: 0,
+      projSpeed: 14,
+      projColor: '#fde047',
+      color: '#ec4899',
+      accent: '#fbcfe8',
+      icon: '🏹',
+      role: 'Ranged Pair',
+      desc: 'Deploys 2 nimble archers that target both ground and air.'
+    },
+    {
+      id: 'giant',
+      name: 'Colossus Giant',
+      cost: 5,
+      type: 'troop',
+      count: 1,
+      hp: 3400,
+      dmg: 220,
+      hitSpeed: 1.5,
+      speed: 1.45,
+      range: 1.25,
+      sight: 7.0,
+      radius: 0.85,
+      targets: 'buildings',
+      isFlying: false,
+      splash: 0,
+      color: '#d97706',
+      accent: '#fef3c7',
+      icon: '🗿',
+      role: 'Siege Tank',
+      desc: 'Massive HP tank that ignores troops and marches straight for towers.'
+    },
+    {
+      id: 'imps',
+      name: 'Shadow Imps',
+      cost: 3,
+      type: 'troop',
+      count: 4,
+      hp: 170,
+      dmg: 95,
+      hitSpeed: 0.85,
+      speed: 3.4,
+      range: 0.95,
+      sight: 5.5,
+      radius: 0.34,
+      targets: 'ground',
+      isFlying: false,
+      splash: 0,
+      color: '#22c55e',
+      accent: '#bbf7d0',
+      icon: '👺',
+      role: 'Fast Swarm',
+      desc: '4 rapid rogues with high burst DPS. Vulnerable to splash.'
+    },
+    {
+      id: 'valkyrie',
+      name: 'Blade Dancer',
+      cost: 4,
+      type: 'troop',
+      count: 1,
+      hp: 1550,
+      dmg: 210,
+      hitSpeed: 1.4,
+      speed: 2.3,
+      range: 1.2,
+      sight: 5.5,
+      radius: 0.58,
+      targets: 'ground',
+      isFlying: false,
+      splash: 2.2,
+      selfSplash: true,
+      color: '#f97316',
+      accent: '#ffedd5',
+      icon: '🪓',
+      role: '360° Splash',
+      desc: 'Spins her twin axes in a 360° whirlwind to shred swarms.'
+    },
+    {
+      id: 'musketeer',
+      name: 'Arcane Ranger',
+      cost: 4,
+      type: 'troop',
+      count: 1,
+      hp: 640,
+      dmg: 185,
+      hitSpeed: 1.0,
+      speed: 2.3,
+      range: 6.0,
+      sight: 7.0,
+      radius: 0.48,
+      targets: 'air_ground',
+      isFlying: false,
+      splash: 0,
+      projSpeed: 16,
+      projColor: '#60a5fa',
+      color: '#6366f1',
+      accent: '#c7d2fe',
+      icon: '🔫',
+      role: 'Sniper',
+      desc: 'Long-range sharpshooter hitting ground and air for heavy damage.'
+    },
+    {
+      id: 'dragon',
+      name: 'Ember Drake',
+      cost: 4,
+      type: 'troop',
+      count: 1,
+      hp: 1050,
+      dmg: 145,
+      hitSpeed: 1.35,
+      speed: 2.6,
+      range: 3.6,
+      sight: 6.0,
+      radius: 0.6,
+      targets: 'air_ground',
+      isFlying: true,
+      splash: 1.8,
+      projSpeed: 11,
+      projColor: '#fb923c',
+      color: '#ef4444',
+      accent: '#fed7aa',
+      icon: '🐉',
+      role: 'Flying Splash',
+      desc: 'Airborne dragon breathing splash fireballs over the river.'
+    },
+    {
+      id: 'pekka',
+      name: 'Titan Mech',
+      cost: 7,
+      type: 'troop',
+      count: 1,
+      hp: 3100,
+      dmg: 560,
+      hitSpeed: 1.8,
+      speed: 1.55,
+      range: 1.25,
+      sight: 5.8,
+      radius: 0.82,
+      targets: 'ground',
+      isFlying: false,
+      splash: 0,
+      color: '#8b5cf6',
+      accent: '#ddd6fe',
+      icon: '🤖',
+      role: 'Heavy Bruiser',
+      desc: 'Heavily armored juggernaut whose blade crushes tanks in a few hits.'
+    },
+    {
+      id: 'hog',
+      name: 'Blitz Boar',
+      cost: 4,
+      type: 'troop',
+      count: 1,
+      hp: 1420,
+      dmg: 250,
+      hitSpeed: 1.45,
+      speed: 3.6,
+      range: 1.1,
+      sight: 7.5,
+      radius: 0.58,
+      targets: 'buildings',
+      isFlying: false,
+      jumpsRiver: true,
+      splash: 0,
+      color: '#b45309',
+      accent: '#fde68a',
+      icon: '🐗',
+      role: 'River Jumper',
+      desc: 'Very fast tower-rusher that leaps straight across the river!'
+    },
+    {
+      id: 'skarmy',
+      name: 'Bone Legion',
+      cost: 3,
+      type: 'troop',
+      count: 10,
+      hp: 75,
+      dmg: 65,
+      hitSpeed: 0.9,
+      speed: 2.9,
+      range: 0.85,
+      sight: 5.5,
+      radius: 0.28,
+      targets: 'ground',
+      isFlying: false,
+      splash: 0,
+      color: '#cbd5e1',
+      accent: '#f8fafc',
+      icon: '💀',
+      role: 'Mega Swarm',
+      desc: 'Summons 10 skeletons that overwhelm single-target tanks.'
+    },
+    {
+      id: 'cannon',
+      name: 'Bastion Cannon',
+      cost: 3,
+      type: 'building',
+      count: 1,
+      hp: 820,
+      dmg: 145,
+      hitSpeed: 0.95,
+      speed: 0,
+      range: 5.5,
+      sight: 5.8,
+      radius: 0.72,
+      targets: 'ground',
+      isFlying: false,
+      splash: 0,
+      lifetime: 30,
+      projSpeed: 16,
+      projColor: '#94a3b8',
+      color: '#64748b',
+      accent: '#e2e8f0',
+      icon: '💣',
+      role: 'Defense',
+      desc: 'Defensive turret that lures Giants & Boars. Lasts 30s.'
+    },
+    {
+      id: 'fireball',
+      name: 'Meteor Fireball',
+      cost: 4,
+      type: 'spell',
+      dmg: 540,
+      towerDmg: 190,
+      splash: 2.6,
+      knockback: 1.4,
+      stun: 0,
+      projSpeed: 15,
+      color: '#f97316',
+      accent: '#fef08a',
+      icon: '🔥',
+      role: 'Heavy Spell',
+      desc: 'Blasts a 2.6-tile radius with heavy damage and knockback.'
+    },
+    {
+      id: 'arrows',
+      name: 'Starfall Arrows',
+      cost: 3,
+      type: 'spell',
+      dmg: 280,
+      towerDmg: 95,
+      splash: 4.0,
+      knockback: 0,
+      stun: 0,
+      projSpeed: 19,
+      color: '#10b981',
+      accent: '#a7f3d0',
+      icon: '☄️',
+      role: 'Area Spell',
+      desc: 'Blankets a huge 4-tile zone with arrows—wipes out swarms.'
+    },
+    {
+      id: 'zap',
+      name: 'Frost Bolt',
+      cost: 2,
+      type: 'spell',
+      dmg: 165,
+      towerDmg: 55,
+      splash: 2.5,
+      knockback: 0,
+      stun: 1.1,
+      projSpeed: 30,
+      color: '#06b6d4',
+      accent: '#cffafe',
+      icon: '⚡',
+      role: 'Stun Spell',
+      desc: 'Instant shock that stuns enemies for 1.1s and resets targets.'
+    }
+  ];
+
+  const CARD_MAP = Object.fromEntries(CARDS.map(c => [c.id, c]));
+
+  // =========================================================================
+  // 3. STATE & DECK MANAGEMENT
+  // =========================================================================
+  let playerDeck = ['knight', 'archers', 'giant', 'valkyrie', 'dragon', 'hog', 'fireball', 'arrows'];
+  let inspectedCardId = 'knight';
+  let aiDifficulty = 'normal';
+  let doubleElixirMode = false;
+
+  let game = null;
+  let selectedHandIndex = null;
+  let pointerArenaPos = null;
+  let isDraggingCard = false;
+  let animFrameId = null;
+  let lastTimestamp = 0;
+
+  const canvas = document.getElementById('arena-canvas');
+  const ctx = canvas.getContext('2d');
+  const menuOverlay = document.getElementById('menu-overlay');
+  const resultOverlay = document.getElementById('result-overlay');
+  const hudBlueCrowns = document.getElementById('hud-blue-crowns');
+  const hudRedCrowns = document.getElementById('hud-red-crowns');
+  const hudTimer = document.getElementById('hud-timer');
+  const hudElixirMult = document.getElementById('hud-elixir-mult');
+  const elixirCountEl = document.getElementById('elixir-count');
+  const elixirFillEl = document.getElementById('elixir-fill');
+  const elixirRateLabel = document.getElementById('elixir-rate-label');
+  const handCardsEl = document.getElementById('hand-cards');
+  const nextCardSlotEl = document.getElementById('next-card-slot');
+  const arenaBanner = document.getElementById('arena-banner');
+  const arenaBannerTitle = document.getElementById('arena-banner-title');
+  const arenaBannerSub = document.getElementById('arena-banner-sub');
+  const arenaToast = document.getElementById('arena-toast');
+
+
+  // =========================================================================
+  // 3B. CUSTOM CLASH-STYLE VECTOR PORTRAIT & 2.5D SPRITE ENGINE
+  // =========================================================================
+  const PORTRAIT_CACHE = {};
+
+  function getPortraitUrl(cardId) {
+    if (PORTRAIT_CACHE[cardId]) return PORTRAIT_CACHE[cardId];
+    const c = CARD_MAP[cardId];
+    const off = document.createElement('canvas');
+    off.width = 112;
+    off.height = 112;
+    const g = off.getContext('2d');
+
+    // Dramatic radial card background
+    const bg = g.createRadialGradient(56, 44, 10, 56, 56, 68);
+    bg.addColorStop(0, c.color);
+    bg.addColorStop(0.65, '#1e293b');
+    bg.addColorStop(1, '#090d16');
+    g.fillStyle = bg;
+    g.fillRect(0, 0, 112, 112);
+
+    // Subtle starburst rays
+    g.save();
+    g.translate(56, 56);
+    g.fillStyle = 'rgba(255,255,255,0.06)';
+    for (let i = 0; i < 8; i++) {
+      g.rotate(Math.PI / 4);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(-10, -70);
+      g.lineTo(10, -70);
+      g.closePath();
+      g.fill();
+    }
+    g.restore();
+
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+
+    const outline = (lw = 3) => { g.strokeStyle = '#0f172a'; g.lineWidth = lw; g.stroke(); };
+
+    if (cardId === 'knight') {
+      // Shoulders/armor
+      g.fillStyle = '#38bdf8'; g.beginPath(); g.arc(56, 106, 36, Math.PI, 0); g.fill(); outline();
+      g.fillStyle = '#94a3b8'; g.beginPath(); g.roundRect(30, 74, 52, 24, 10); g.fill(); outline();
+      // Face
+      g.fillStyle = '#fed7aa'; g.beginPath(); g.arc(56, 54, 21, 0, Math.PI * 2); g.fill(); outline();
+      // Mustache
+      g.fillStyle = '#92400e'; g.beginPath(); g.ellipse(47, 62, 10, 4.5, -0.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.ellipse(65, 62, 10, 4.5, 0.2, 0, Math.PI * 2); g.fill();
+      // Steel helmet
+      g.fillStyle = '#cbd5e1'; g.beginPath(); g.arc(56, 48, 23, Math.PI, 0); g.lineTo(79, 54); g.lineTo(33, 54); g.closePath(); g.fill(); outline();
+      // Plume
+      g.fillStyle = '#0284c7'; g.beginPath(); g.ellipse(56, 22, 9, 14, 0, 0, Math.PI * 2); g.fill(); outline();
+      // Sword
+      g.fillStyle = '#e2e8f0'; g.beginPath(); g.moveTo(86, 22); g.lineTo(94, 28); g.lineTo(80, 72); g.lineTo(72, 68); g.closePath(); g.fill(); outline(2.5);
+    } else if (cardId === 'archers') {
+      // Cloak & hood
+      g.fillStyle = '#db2777'; g.beginPath(); g.arc(56, 104, 34, Math.PI, 0); g.fill(); outline();
+      g.fillStyle = '#15803d'; g.beginPath(); g.arc(56, 54, 26, Math.PI * 0.9, Math.PI * 0.1); g.lineTo(82, 72); g.lineTo(30, 72); g.closePath(); g.fill(); outline();
+      // Face
+      g.fillStyle = '#fde68a'; g.beginPath(); g.arc(56, 56, 18, 0, Math.PI * 2); g.fill(); outline();
+      // Eyes
+      g.fillStyle = '#0f172a'; g.beginPath(); g.arc(49, 55, 2.5, 0, Math.PI * 2); g.arc(63, 55, 2.5, 0, Math.PI * 2); g.fill();
+      // Bow
+      g.strokeStyle = '#b45309'; g.lineWidth = 5;
+      g.beginPath(); g.arc(76, 58, 28, -Math.PI * 0.42, Math.PI * 0.42); g.stroke();
+      g.strokeStyle = '#fde047'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(82, 31); g.lineTo(82, 85); g.stroke();
+    } else if (cardId === 'giant') {
+      // Broad shoulders
+      g.fillStyle = '#92400e'; g.beginPath(); g.arc(56, 108, 44, Math.PI, 0); g.fill(); outline();
+      // Big head
+      g.fillStyle = '#fdba74'; g.beginPath(); g.roundRect(30, 26, 52, 54, 18); g.fill(); outline();
+      // Ginger beard & brows
+      g.fillStyle = '#c2410c'; g.beginPath(); g.arc(56, 66, 24, 0, Math.PI); g.fill(); outline();
+      g.fillRect(36, 40, 16, 6); g.fillRect(60, 40, 16, 6);
+      g.fillStyle = '#fff'; g.beginPath(); g.arc(44, 50, 4, 0, Math.PI * 2); g.arc(68, 50, 4, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#0f172a'; g.beginPath(); g.arc(44, 50, 2, 0, Math.PI * 2); g.arc(68, 50, 2, 0, Math.PI * 2); g.fill();
+    } else if (cardId === 'imps') {
+      // Pointy ears
+      g.fillStyle = '#16a34a';
+      g.beginPath(); g.moveTo(34, 48); g.lineTo(12, 34); g.lineTo(30, 60); g.closePath(); g.fill(); outline();
+      g.beginPath(); g.moveTo(78, 48); g.lineTo(100, 34); g.lineTo(82, 60); g.closePath(); g.fill(); outline();
+      // Head
+      g.fillStyle = '#22c55e'; g.beginPath(); g.arc(56, 56, 24, 0, Math.PI * 2); g.fill(); outline();
+      // Glowing yellow eyes & grin
+      g.fillStyle = '#fef08a'; g.beginPath(); g.ellipse(46, 50, 6, 4, 0.25, 0, Math.PI * 2); g.ellipse(66, 50, 6, 4, -0.25, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#0f172a'; g.beginPath(); g.arc(56, 64, 11, 0.1, Math.PI - 0.1); g.fill();
+    } else if (cardId === 'valkyrie') {
+      // Armor & hair
+      g.fillStyle = '#ea580c'; g.beginPath(); g.arc(56, 106, 36, Math.PI, 0); g.fill(); outline();
+      g.fillStyle = '#c2410c'; g.beginPath(); g.arc(56, 48, 25, Math.PI * 0.85, Math.PI * 0.15); g.lineTo(84, 78); g.lineTo(28, 78); g.closePath(); g.fill(); outline();
+      g.fillStyle = '#fed7aa'; g.beginPath(); g.arc(56, 56, 19, 0, Math.PI * 2); g.fill(); outline();
+      // Double-headed axe
+      g.fillStyle = '#cbd5e1'; g.beginPath(); g.moveTo(80, 20); g.quadraticCurveTo(104, 34, 86, 58); g.lineTo(74, 46); g.closePath(); g.fill(); outline(2.5);
+    } else if (cardId === 'musketeer') {
+      g.fillStyle = '#4f46e5'; g.beginPath(); g.arc(56, 104, 34, Math.PI, 0); g.fill(); outline();
+      g.fillStyle = '#fde68a'; g.beginPath(); g.arc(56, 58, 18, 0, Math.PI * 2); g.fill(); outline();
+      // Helmet/hat
+      g.fillStyle = '#312e81'; g.beginPath(); g.ellipse(56, 40, 30, 9, 0, 0, Math.PI * 2); g.fill(); outline();
+      g.beginPath(); g.roundRect(38, 22, 36, 20, 8); g.fill(); outline();
+      // Musket barrel
+      g.fillStyle = '#64748b'; g.fillRect(68, 56, 36, 8); g.strokeStyle = '#0f172a'; g.lineWidth = 2; g.strokeRect(68, 56, 36, 8);
+    } else if (cardId === 'dragon') {
+      // Wings
+      g.fillStyle = '#b91c1c';
+      g.beginPath(); g.moveTo(32, 62); g.lineTo(8, 26); g.lineTo(42, 46); g.closePath(); g.fill(); outline();
+      g.beginPath(); g.moveTo(80, 62); g.lineTo(104, 26); g.lineTo(70, 46); g.closePath(); g.fill(); outline();
+      // Dragon head
+      g.fillStyle = '#ef4444'; g.beginPath(); g.ellipse(56, 58, 24, 22, 0, 0, Math.PI * 2); g.fill(); outline();
+      g.fillStyle = '#fbbf24'; g.beginPath(); g.ellipse(56, 70, 14, 10, 0, 0, Math.PI); g.fill();
+      g.fillStyle = '#fef08a'; g.beginPath(); g.arc(46, 52, 5, 0, Math.PI * 2); g.arc(66, 52, 5, 0, Math.PI * 2); g.fill();
+    } else if (cardId === 'pekka') {
+      // Dark steel armor
+      g.fillStyle = '#312e81'; g.beginPath(); g.arc(56, 108, 42, Math.PI, 0); g.fill(); outline();
+      // Horns
+      g.fillStyle = '#a855f7';
+      g.beginPath(); g.moveTo(32, 42); g.lineTo(14, 14); g.lineTo(42, 34); g.closePath(); g.fill(); outline();
+      g.beginPath(); g.moveTo(80, 42); g.lineTo(98, 14); g.lineTo(70, 34); g.closePath(); g.fill(); outline();
+      // Helmet
+      g.fillStyle = '#475569'; g.beginPath(); g.roundRect(30, 32, 52, 48, 14); g.fill(); outline();
+      // Glowing visor
+      g.fillStyle = '#e879f9'; g.fillRect(38, 50, 14, 6); g.fillRect(60, 50, 14, 6);
+    } else if (cardId === 'hog') {
+      // Boar head
+      g.fillStyle = '#78350f'; g.beginPath(); g.ellipse(56, 66, 28, 24, 0, 0, Math.PI * 2); g.fill(); outline();
+      // Snout & tusks
+      g.fillStyle = '#fda4af'; g.beginPath(); g.ellipse(56, 72, 13, 9, 0, 0, Math.PI * 2); g.fill(); outline(2);
+      g.fillStyle = '#fef3c7';
+      g.beginPath(); g.moveTo(34, 72); g.quadraticCurveTo(20, 58, 28, 48); g.quadraticCurveTo(34, 60, 40, 68); g.fill(); outline(2);
+      g.beginPath(); g.moveTo(78, 72); g.quadraticCurveTo(92, 58, 84, 48); g.quadraticCurveTo(78, 60, 72, 68); g.fill(); outline(2);
+      // Mohawk rider crest
+      g.fillStyle = '#0f172a'; g.beginPath(); g.roundRect(48, 20, 16, 24, 6); g.fill();
+    } else if (cardId === 'skarmy') {
+      g.fillStyle = '#e2e8f0'; g.beginPath(); g.arc(56, 50, 24, 0, Math.PI * 2); g.fill(); outline();
+      g.fillRect(42, 64, 28, 16); g.strokeRect(42, 64, 28, 16);
+      g.fillStyle = '#0f172a'; g.beginPath(); g.arc(46, 48, 6, 0, Math.PI * 2); g.arc(66, 48, 6, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#0f172a'; g.beginPath(); g.moveTo(56, 56); g.lineTo(52, 62); g.lineTo(60, 62); g.closePath(); g.fill();
+    } else if (cardId === 'cannon') {
+      g.fillStyle = '#78350f'; g.beginPath(); g.roundRect(26, 68, 60, 22, 8); g.fill(); outline();
+      g.fillStyle = '#334155'; g.beginPath(); g.roundRect(36, 30, 40, 46, 12); g.fill(); outline();
+      g.fillStyle = '#0f172a'; g.beginPath(); g.ellipse(56, 32, 14, 8, 0, 0, Math.PI * 2); g.fill();
+    } else if (cardId === 'fireball') {
+      const fg = g.createRadialGradient(56, 58, 6, 56, 56, 36);
+      fg.addColorStop(0, '#fef9c3'); fg.addColorStop(0.5, '#f97316'); fg.addColorStop(1, '#dc2626');
+      g.fillStyle = fg; g.beginPath(); g.arc(56, 58, 32, 0, Math.PI * 2); g.fill(); outline(2.5);
+    } else if (cardId === 'arrows') {
+      for (let i = -1; i <= 1; i++) {
+        g.save(); g.translate(56 + i * 18, 56); g.rotate(-0.65);
+        g.fillStyle = '#cbd5e1'; g.fillRect(-2, -30, 4, 56);
+        g.fillStyle = '#10b981'; g.beginPath(); g.moveTo(0, -36); g.lineTo(-7, -22); g.lineTo(7, -22); g.closePath(); g.fill();
+        g.restore();
+      }
+    } else if (cardId === 'zap') {
+      g.fillStyle = '#22d3ee';
+      g.beginPath();
+      g.moveTo(64, 16); g.lineTo(34, 60); g.lineTo(54, 60); g.lineTo(44, 96); g.lineTo(78, 50); g.lineTo(58, 50);
+      g.closePath(); g.fill(); outline(2.5);
+    }
+
+    const url = off.toDataURL('image/png');
+    PORTRAIT_CACHE[cardId] = url;
+    return url;
+  }
+
+  // =========================================================================
+  // 4. DECK BUILDER & MENU UI
+  // =========================================================================
+  function savePrefs() {
+    try {
+      localStorage.setItem('crown_clash_deck', JSON.stringify(playerDeck));
+    } catch (_) {}
+  }
+  function loadPrefs() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('crown_clash_deck'));
+      if (Array.isArray(saved) && saved.length === 8 && saved.every(id => CARD_MAP[id])) {
+        playerDeck = saved;
+      }
+    } catch (_) {}
+  }
+
+  function renderDeckBuilder() {
+    const deckGrid = document.getElementById('deck-grid');
+    const rosterGrid = document.getElementById('roster-grid');
+    const deckCountEl = document.getElementById('deck-count');
+    const avgEl = document.getElementById('deck-avg-elixir');
+
+    deckCountEl.textContent = playerDeck.length;
+    const totalCost = playerDeck.reduce((s, id) => s + CARD_MAP[id].cost, 0);
+    avgEl.textContent = playerDeck.length ? (totalCost / playerDeck.length).toFixed(1) : '0.0';
+
+    const startBtn = document.getElementById('btn-start-battle');
+    if (playerDeck.length === 8) {
+      startBtn.disabled = false;
+      startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      startBtn.textContent = '⚔️ ENTER ARENA';
+    } else {
+      startBtn.disabled = true;
+      startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      startBtn.textContent = `Select ${8 - playerDeck.length} more card${8 - playerDeck.length > 1 ? 's' : ''}`;
+    }
+
+    deckGrid.innerHTML = '';
+    for (let i = 0; i < 8; i++) {
+      const id = playerDeck[i];
+      const slot = document.createElement('button');
+      if (id) {
+        const c = CARD_MAP[id];
+        slot.className = `relative flex flex-col items-center justify-center p-2 rounded-xl bg-slate-800/95 border-2 ${inspectedCardId === id ? 'border-amber-400' : 'border-sky-500/50'} hover:border-sky-400 transition`;
+        slot.innerHTML = `
+          <span class="absolute -top-1.5 -left-1.5 w-5 h-5 rounded-full bg-fuchsia-600 border border-fuchsia-300 text-[10px] font-bold flex items-center justify-center text-white shadow">${c.cost}</span>
+          <img src="${getPortraitUrl(id)}" alt="${c.name}" class="w-10 h-10 rounded-lg object-cover border border-slate-600/80 mb-1 shadow" />
+          <span class="text-[10px] font-bold text-slate-200 truncate w-full text-center">${c.name.split(' ').pop()}</span>
+        `;
+        slot.onclick = () => {
+          inspectedCardId = id;
+          toggleDeckCard(id);
+        };
+      } else {
+        slot.className = 'flex flex-col items-center justify-center p-2 rounded-xl bg-slate-900/60 border-2 border-dashed border-slate-700 text-slate-600 h-[62px] text-xs font-bold';
+        slot.textContent = '+ Empty';
+      }
+      deckGrid.appendChild(slot);
+    }
+
+    rosterGrid.innerHTML = '';
+    CARDS.forEach(c => {
+      const inDeck = playerDeck.includes(c.id);
+      const cardEl = document.createElement('button');
+      cardEl.className = `relative text-left p-2 rounded-xl border transition flex items-center gap-2 ${
+        inDeck
+          ? 'bg-sky-950/50 border-sky-500/70 shadow-sm'
+          : 'bg-slate-900/90 border-slate-800 hover:border-slate-600'
+      } ${inspectedCardId === c.id ? 'ring-2 ring-amber-400' : ''}`;
+      cardEl.innerHTML = `
+        <div class="relative w-10 h-10 rounded-lg shrink-0">
+          <img src="${getPortraitUrl(c.id)}" alt="${c.name}" class="w-10 h-10 rounded-lg object-cover border border-slate-600/80" />
+          <span class="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-fuchsia-600 border border-fuchsia-300 text-[9px] font-bold flex items-center justify-center text-white shadow">${c.cost}</span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="text-xs font-bold text-slate-100 truncate">${c.name}</div>
+          <div class="text-[10px] text-slate-400 truncate">${c.role}</div>
+        </div>
+        ${inDeck ? '<span class="text-[10px] font-bold text-sky-400">✓</span>' : ''}
+      `;
+      cardEl.onclick = () => {
+        inspectedCardId = c.id;
+        toggleDeckCard(c.id);
+      };
+      rosterGrid.appendChild(cardEl);
+    });
+
+    updateInspector();
+  }
+
+  function toggleDeckCard(id) {
+    const idx = playerDeck.indexOf(id);
+    if (idx !== -1) {
+      playerDeck.splice(idx, 1);
+    } else if (playerDeck.length < 8) {
+      playerDeck.push(id);
+    }
+    savePrefs();
+    renderDeckBuilder();
+  }
+
+  function updateInspector() {
+    const c = CARD_MAP[inspectedCardId];
+    if (!c) return;
+    document.getElementById('insp-icon').innerHTML = `<img src="${getPortraitUrl(c.id)}" alt="${c.name}" class="w-10 h-10 rounded-lg object-cover border border-slate-600" />`;
+    document.getElementById('insp-name').textContent = c.name;
+    document.getElementById('insp-cost').textContent = `${c.cost} Elixir`;
+    document.getElementById('insp-type').textContent = c.type.toUpperCase();
+    document.getElementById('insp-desc').textContent = c.desc;
+    const btn = document.getElementById('btn-insp-toggle');
+    const inDeck = playerDeck.includes(c.id);
+    btn.textContent = inDeck ? 'Remove' : (playerDeck.length < 8 ? 'Add to Deck' : 'Deck Full');
+    btn.className = `px-2.5 py-1.5 rounded-lg font-bold text-xs shrink-0 transition ${
+      inDeck ? 'bg-rose-600 hover:bg-rose-500 text-white' : 'bg-sky-600 hover:bg-sky-500 text-white'
+    }`;
+  }
+
+  document.getElementById('btn-insp-toggle').onclick = () => toggleDeckCard(inspectedCardId);
+  document.getElementById('btn-random-deck').onclick = () => {
+    const shuffled = [...CARDS].sort(() => Math.random() - 0.5);
+    playerDeck = shuffled.slice(0, 8).map(c => c.id);
+    savePrefs();
+    renderDeckBuilder();
+  };
+
+  // =========================================================================
+  // 5. BATTLE ENGINE & INITIALIZATION
+  // =========================================================================
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function createTowers(side) {
+    const isBlue = side === 'blue';
+    const princessY = isBlue ? 25.5 : 6.5;
+    const kingY = isBlue ? 28.8 : 3.2;
+    return [
+      {
+        id: `${side}_left`,
+        side,
+        kind: 'princess',
+        lane: 'left',
+        x: 3.5,
+        y: princessY,
+        hp: 2534,
+        maxHp: 2534,
+        dmg: 90,
+        hitSpeed: 0.8,
+        range: 7.5,
+        radius: 1.25,
+        cooldown: 0,
+        active: true,
+        hitFlash: 0
+      },
+      {
+        id: `${side}_right`,
+        side,
+        kind: 'princess',
+        lane: 'right',
+        x: 14.5,
+        y: princessY,
+        hp: 2534,
+        maxHp: 2534,
+        dmg: 90,
+        hitSpeed: 0.8,
+        range: 7.5,
+        radius: 1.25,
+        cooldown: 0,
+        active: true,
+        hitFlash: 0
+      },
+      {
+        id: `${side}_king`,
+        side,
+        kind: 'king',
+        lane: 'center',
+        x: 9.0,
+        y: kingY,
+        hp: 4200,
+        maxHp: 4200,
+        dmg: 109,
+        hitSpeed: 1.0,
+        range: 7.0,
+        radius: 1.55,
+        cooldown: 0,
+        active: false,
+        hitFlash: 0
+      }
+    ];
+  }
+
+  function startMatch() {
+    sfx.unlock();
+    aiDifficulty = document.getElementById('select-difficulty').value;
+    doubleElixirMode = document.getElementById('toggle-2x-mode').checked;
+
+    const blueQueue = shuffle(playerDeck);
+    const aiPool = ['knight', 'archers', 'giant', 'imps', 'valkyrie', 'musketeer', 'dragon', 'hog', 'fireball', 'arrows', 'cannon', 'pekka'];
+    const redQueue = shuffle(aiPool).slice(0, 8);
+
+    game = {
+      timeLeft: 180,
+      overtime: false,
+      overtimeShown: false,
+      doubleShown: false,
+      ended: false,
+      winner: null,
+      blueElixir: 5.0,
+      redElixir: 5.0,
+      blueCrowns: 0,
+      redCrowns: 0,
+      blueHand: blueQueue.slice(0, 4),
+      blueNext: blueQueue[4],
+      blueQueue: blueQueue.slice(5),
+      redHand: redQueue.slice(0, 4),
+      redNext: redQueue[4],
+      redQueue: redQueue.slice(5),
+      aiTimer: 1.6,
+      towers: [...createTowers('blue'), ...createTowers('red')],
+      units: [],
+      projectiles: [],
+      effects: [],
+      floatingTexts: [],
+      screenShake: 0,
+      nextEntityId: 1
+    };
+
+    selectedHandIndex = null;
+    pointerArenaPos = null;
+    menuOverlay.classList.add('hidden');
+    resultOverlay.classList.add('hidden');
+    arenaBanner.classList.add('hidden');
+    resizeCanvas();
+    renderHand();
+    updateHud();
+
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    lastTimestamp = performance.now();
+    animFrameId = requestAnimationFrame(gameLoop);
+  }
+
+  function showBanner(title, sub, duration = 2200) {
+    arenaBannerTitle.textContent = title;
+    arenaBannerSub.textContent = sub;
+    arenaBanner.classList.remove('hidden');
+    setTimeout(() => {
+      arenaBanner.classList.add('hidden');
+    }, duration);
+  }
+
+  let toastTimeout = null;
+  function showToast(msg) {
+    arenaToast.textContent = msg;
+    arenaToast.classList.remove('hidden');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => arenaToast.classList.add('hidden'), 1500);
+  }
+
+  // =========================================================================
+  // 6. DEPLOYMENT VALIDATION & CARD PLAYING
+  // =========================================================================
+  function isValidDeployPos(side, card, x, y) {
+    if (x < 0.6 || x > ARENA_W - 0.6 || y < 0.8 || y > ARENA_H - 0.8) return false;
+    if (card.type === 'spell') return true;
+
+    if (side === 'blue') {
+      if (y >= 17.3) return true;
+      const redLeftDead = !game.towers.find(t => t.id === 'red_left' && t.hp > 0);
+      const redRightDead = !game.towers.find(t => t.id === 'red_right' && t.hp > 0);
+      if (redLeftDead && x < 9 && y >= 11.5) return true;
+      if (redRightDead && x >= 9 && y >= 11.5) return true;
+      return false;
+    } else {
+      if (y <= 14.7) return true;
+      const blueLeftDead = !game.towers.find(t => t.id === 'blue_left' && t.hp > 0);
+      const blueRightDead = !game.towers.find(t => t.id === 'blue_right' && t.hp > 0);
+      if (blueLeftDead && x < 9 && y <= 20.5) return true;
+      if (blueRightDead && x >= 9 && y <= 20.5) return true;
+      return false;
+    }
+  }
+
+  function playCard(side, handIdx, x, y) {
+    if (!game || game.ended) return false;
+    const isBlue = side === 'blue';
+    const hand = isBlue ? game.blueHand : game.redHand;
+    const cardId = hand[handIdx];
+    const card = CARD_MAP[cardId];
+    if (!card) return false;
+
+    const elixir = isBlue ? game.blueElixir : game.redElixir;
+    if (elixir < card.cost) return false;
+    if (!isValidDeployPos(side, card, x, y)) {
+      if (isBlue) showToast('Deploy in your highlighted territory!');
+      return false;
+    }
+
+    if (isBlue) game.blueElixir -= card.cost;
+    else game.redElixir -= card.cost;
+
+    if (isBlue) {
+      game.blueQueue.push(cardId);
+      hand[handIdx] = game.blueNext;
+      game.blueNext = game.blueQueue.shift();
+      selectedHandIndex = null;
+      renderHand();
+    } else {
+      game.redQueue.push(cardId);
+      hand[handIdx] = game.redNext;
+      game.redNext = game.redQueue.shift();
+    }
+
+    sfx.play('deploy');
+
+    if (card.type === 'spell') {
+      const king = game.towers.find(t => t.id === `${side}_king`);
+      const startX = king ? king.x : 9;
+      const startY = king ? king.y : (isBlue ? 29 : 3);
+      if (card.id === 'zap') {
+        resolveSpellImpact(side, card, x, y);
+      } else {
+        game.projectiles.push({
+          id: game.nextEntityId++,
+          kind: 'spell',
+          cardId: card.id,
+          side,
+          x: startX,
+          y: startY,
+          targetX: x,
+          targetY: y,
+          speed: card.projSpeed,
+          splash: card.splash,
+          dmg: card.dmg,
+          towerDmg: card.towerDmg,
+          knockback: card.knockback || 0,
+          stun: card.stun || 0,
+          color: card.color
+        });
+      }
+    } else {
+      const count = card.count || 1;
+      for (let i = 0; i < count; i++) {
+        let ox = 0, oy = 0;
+        if (count === 2) {
+          ox = i === 0 ? -0.65 : 0.65;
+        } else if (count > 2) {
+          const angle = (i / count) * Math.PI * 2;
+          const dist = count > 5 ? (i % 2 === 0 ? 1.15 : 0.55) : 0.75;
+          ox = Math.cos(angle) * dist;
+          oy = Math.sin(angle) * dist;
+        }
+        const ux = Math.max(0.8, Math.min(ARENA_W - 0.8, x + ox));
+        const uy = Math.max(1.0, Math.min(ARENA_H - 1.0, y + oy));
+
+        game.units.push({
+          id: game.nextEntityId++,
+          cardId: card.id,
+          side,
+          type: card.type,
+          x: ux,
+          y: uy,
+          hp: card.hp,
+          maxHp: card.hp,
+          dmg: card.dmg,
+          hitSpeed: card.hitSpeed,
+          speed: card.speed,
+          range: card.range,
+          sight: card.sight,
+          radius: card.radius,
+          targets: card.targets,
+          isFlying: !!card.isFlying,
+          jumpsRiver: !!card.jumpsRiver,
+          splash: card.splash || 0,
+          selfSplash: !!card.selfSplash,
+          projSpeed: card.projSpeed || 0,
+          projColor: card.projColor || '#fff',
+          color: card.color,
+          accent: card.accent,
+          icon: card.icon,
+          deployTimer: 0.9,
+          cooldown: 0.2,
+          stunTimer: 0,
+          hitFlash: 0,
+          walkPhase: Math.random() * Math.PI * 2,
+          attackAnim: 0,
+          lifetime: card.lifetime || null,
+          targetId: null
+        });
+      }
+      game.effects.push({ kind: 'ring', x, y, r: 0.3, maxR: 1.4, life: 0.35, maxLife: 0.35, color: isBlue ? '#38bdf8' : '#fb7185' });
+    }
+
+    return true;
+  }
+
+  function resolveSpellImpact(side, card, x, y) {
+    if (card.id === 'fireball') { sfx.play('fireball'); game.screenShake = Math.max(game.screenShake, 0.22); }
+    else if (card.id === 'zap') sfx.play('zap');
+    else sfx.play('arrow');
+
+    game.effects.push({
+      kind: 'explosion',
+      x, y,
+      r: card.splash,
+      life: 0.45,
+      maxLife: 0.45,
+      color: card.color
+    });
+
+    const enemySide = side === 'blue' ? 'red' : 'blue';
+
+    game.units.forEach(u => {
+      if (u.side !== enemySide || u.hp <= 0) return;
+      const d = Math.hypot(u.x - x, u.y - y);
+      if (d <= card.splash + u.radius) {
+        applyDamage(u, card.dmg);
+        if (card.stun > 0) {
+          u.stunTimer = Math.max(u.stunTimer, card.stun);
+          u.targetId = null;
+        }
+        if (card.knockback > 0 && u.type === 'troop') {
+          const ang = Math.atan2(u.y - y, u.x - x);
+          const kb = u.cardId === 'giant' || u.cardId === 'pekka' ? card.knockback * 0.35 : card.knockback;
+          u.x = Math.max(0.6, Math.min(ARENA_W - 0.6, u.x + Math.cos(ang) * kb));
+          u.y = Math.max(0.8, Math.min(ARENA_H - 0.8, u.y + Math.sin(ang) * kb));
+        }
+      }
+    });
+
+    game.towers.forEach(t => {
+      if (t.side !== enemySide || t.hp <= 0) return;
+      const d = Math.hypot(t.x - x, t.y - y);
+      if (d <= card.splash + t.radius) {
+        applyTowerDamage(t, card.towerDmg);
+        if (card.stun > 0) t.cooldown = Math.max(t.cooldown, card.stun);
+      }
+    });
+  }
+
+  // =========================================================================
+  // 7. SIMULATION & COMBAT AI LOOP
+  // =========================================================================
+  function getElixirRate() {
+    if (!game) return 1.0;
+    if (doubleElixirMode || game.overtime || game.timeLeft <= 60) return 2.0;
+    return 1.0;
+  }
+
+  function applyDamage(unit, dmg) {
+    unit.hp -= dmg;
+    unit.hitFlash = 0.12;
+    if (game && game.floatingTexts.length < 24) {
+      game.floatingTexts.push({
+        x: unit.x + (Math.random() - 0.5) * 0.4,
+        y: unit.y - unit.radius - 0.4,
+        text: `-${Math.round(dmg)}`,
+        color: unit.side === 'blue' ? '#fca5a5' : '#fef08a',
+        life: 0.55,
+        maxLife: 0.55
+      });
+    }
+  }
+
+  function applyTowerDamage(tower, dmg) {
+    if (tower.hp <= 0) return;
+    tower.hp = Math.max(0, tower.hp - dmg);
+    tower.hitFlash = 0.14;
+    if (tower.kind === 'king' && !tower.active) {
+      tower.active = true;
+    }
+    if (tower.hp <= 0) {
+      sfx.play('tower_down');
+      game.screenShake = 0.35;
+      game.effects.push({ kind: 'explosion', x: tower.x, y: tower.y, r: 2.6, life: 0.7, maxLife: 0.7, color: '#facc15' });
+      if (tower.kind === 'princess') {
+        const king = game.towers.find(t => t.side === tower.side && t.kind === 'king');
+        if (king) king.active = true;
+      }
+      if (tower.side === 'red') game.blueCrowns++;
+      else game.redCrowns++;
+
+      if (tower.kind === 'king') {
+        if (tower.side === 'red') game.blueCrowns = 3;
+        else game.redCrowns = 3;
+        endMatch(tower.side === 'red' ? 'blue' : 'red', 'King Tower Destroyed!');
+      } else if (game.overtime) {
+        endMatch(tower.side === 'red' ? 'blue' : 'red', 'Sudden Death Crown!');
+      }
+    }
+  }
+
+  function canTarget(attacker, target) {
+    if (target.hp <= 0) return false;
+    if (attacker.targets === 'buildings') {
+      return target.kind !== undefined || target.type === 'building';
+    }
+    if (attacker.targets === 'ground' && target.isFlying) return false;
+    return true;
+  }
+
+  function findBestTarget(unit) {
+    const enemySide = unit.side === 'blue' ? 'red' : 'blue';
+    let best = null;
+    let bestDist = Infinity;
+
+    if (unit.targets !== 'buildings') {
+      for (const other of game.units) {
+        if (other.side !== enemySide || !canTarget(unit, other)) continue;
+        const d = Math.hypot(other.x - unit.x, other.y - unit.y) - other.radius;
+        if (d <= unit.sight && d < bestDist) {
+          bestDist = d;
+          best = other;
+        }
+      }
+    } else {
+      for (const other of game.units) {
+        if (other.side !== enemySide || other.type !== 'building' || other.hp <= 0) continue;
+        const d = Math.hypot(other.x - unit.x, other.y - unit.y) - other.radius;
+        if (d <= unit.sight && d < bestDist) {
+          bestDist = d;
+          best = other;
+        }
+      }
+    }
+
+    if (best) return { target: best, dist: bestDist };
+
+    for (const t of game.towers) {
+      if (t.side !== enemySide || t.hp <= 0) continue;
+      const d = Math.hypot(t.x - unit.x, t.y - unit.y) - t.radius;
+      if (d < bestDist) {
+        bestDist = d;
+        best = t;
+      }
+    }
+    return best ? { target: best, dist: bestDist } : null;
+  }
+
+  function moveUnitToward(u, tx, ty, dt) {
+    let destX = tx;
+    let destY = ty;
+
+    if (!u.isFlying && !u.jumpsRiver) {
+      const riverTop = 15.0;
+      const riverBot = 17.0;
+      const needCrossDown = u.y < riverTop && ty > riverBot;
+      const needCrossUp = u.y > riverBot && ty < riverTop;
+
+      if (needCrossDown || needCrossUp) {
+        const leftBridgeX = 3.5;
+        const rightBridgeX = 14.5;
+        const bridgeX = Math.abs(u.x - leftBridgeX) < Math.abs(u.x - rightBridgeX) ? leftBridgeX : rightBridgeX;
+        const bridgeEntryY = needCrossUp ? 17.2 : 14.8;
+        if (Math.abs(u.x - bridgeX) > 0.75) {
+          destX = bridgeX;
+          destY = bridgeEntryY;
+        } else {
+          destX = bridgeX;
+          destY = needCrossUp ? 14.6 : 17.4;
+        }
+      }
+    }
+
+    const dx = destX - u.x;
+    const dy = destY - u.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0.01) {
+      const step = Math.min(len, u.speed * dt);
+      u.x += (dx / len) * step;
+      u.y += (dy / len) * step;
+      u.walkPhase += dt * u.speed * 4.2;
+    }
+  }
+
+  function updateSimulation(dt) {
+    if (game.ended) return;
+
+    game.timeLeft -= dt;
+    if (game.timeLeft <= 60 && !game.overtime && !game.doubleShown && !doubleElixirMode) {
+      game.doubleShown = true;
+      showBanner('2x DOUBLE ELIXIR!', 'Final 60 seconds — Elixir regenerates 2x faster');
+    }
+
+    if (game.timeLeft <= 0) {
+      if (!game.overtime) {
+        if (game.blueCrowns !== game.redCrowns) {
+          endMatch(game.blueCrowns > game.redCrowns ? 'blue' : 'red', 'Time Expired!');
+          return;
+        } else {
+          game.overtime = true;
+          game.timeLeft = 60;
+          showBanner('SUDDEN DEATH!', 'Next tower destroyed wins!');
+        }
+      } else {
+        const blueMin = Math.min(...game.towers.filter(t => t.side === 'blue' && t.hp > 0).map(t => t.hp));
+        const redMin = Math.min(...game.towers.filter(t => t.side === 'red' && t.hp > 0).map(t => t.hp));
+        if (blueMin === redMin) endMatch('draw', 'Exact Tiebreaker!');
+        else endMatch(blueMin > redMin ? 'blue' : 'red', 'Tiebreaker: Higher Tower HP!');
+        return;
+      }
+    }
+
+    const rate = 0.357 * getElixirRate();
+    game.blueElixir = Math.min(10, game.blueElixir + rate * dt);
+    game.redElixir = Math.min(10, game.redElixir + rate * dt);
+
+    updateAI(dt);
+
+    for (const u of game.units) {
+      if (u.hp <= 0) continue;
+      if (u.hitFlash > 0) u.hitFlash -= dt;
+      if (u.attackAnim > 0) u.attackAnim -= dt;
+
+      if (u.lifetime !== null) {
+        u.hp -= (u.maxHp / u.lifetime) * dt;
+        if (u.hp <= 0) continue;
+      }
+
+      if (u.deployTimer > 0) {
+        u.deployTimer -= dt;
+        continue;
+      }
+      if (u.stunTimer > 0) {
+        u.stunTimer -= dt;
+        continue;
+      }
+
+      if (u.cooldown > 0) u.cooldown -= dt;
+
+      const found = findBestTarget(u);
+      if (!found) continue;
+      const { target, dist } = found;
+
+      if (dist <= u.range) {
+        if (u.cooldown <= 0) {
+          u.cooldown = u.hitSpeed;
+          u.attackAnim = 0.22;
+          if (u.projSpeed > 0) {
+            sfx.play('arrow');
+            game.projectiles.push({
+              id: game.nextEntityId++,
+              kind: 'unit_proj',
+              side: u.side,
+              x: u.x,
+              y: u.y,
+              target,
+              speed: u.projSpeed,
+              dmg: u.dmg,
+              splash: u.splash,
+              color: u.projColor
+            });
+          } else if (u.selfSplash) {
+            sfx.play('hit');
+            game.effects.push({ kind: 'ring', x: u.x, y: u.y, r: 0.4, maxR: u.splash, life: 0.22, maxLife: 0.22, color: '#fb923c' });
+            const enemySide = u.side === 'blue' ? 'red' : 'blue';
+            game.units.forEach(o => {
+              if (o.side === enemySide && !o.isFlying && Math.hypot(o.x - u.x, o.y - u.y) - o.radius <= u.splash) {
+                applyDamage(o, u.dmg);
+              }
+            });
+            game.towers.forEach(t => {
+              if (t.side === enemySide && t.hp > 0 && Math.hypot(t.x - u.x, t.y - u.y) - t.radius <= u.splash) {
+                applyTowerDamage(t, u.dmg);
+              }
+            });
+          } else {
+            sfx.play('hit');
+            if (target.kind) applyTowerDamage(target, u.dmg);
+            else applyDamage(target, u.dmg);
+          }
+        }
+      } else if (u.speed > 0) {
+        moveUnitToward(u, target.x, target.y, dt);
+      }
+    }
+
+    for (let i = 0; i < game.units.length; i++) {
+      const a = game.units[i];
+      if (a.hp <= 0 || a.type === 'building') continue;
+      for (let j = i + 1; j < game.units.length; j++) {
+        const b = game.units[j];
+        if (b.hp <= 0 || b.type === 'building' || a.isFlying !== b.isFlying) continue;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        const minD = (a.radius + b.radius) * 0.85;
+        if (d > 0.001 && d < minD) {
+          const push = (minD - d) * 0.35;
+          const nx = dx / d, ny = dy / d;
+          a.x -= nx * push; a.y -= ny * push;
+          b.x += nx * push; b.y += ny * push;
+        }
+      }
+    }
+
+    game.units = game.units.filter(u => {
+      if (u.hp <= 0) {
+        game.effects.push({ kind: 'puff', x: u.x, y: u.y, r: u.radius, life: 0.25, maxLife: 0.25, color: u.color });
+        return false;
+      }
+      return true;
+    });
+
+    for (const t of game.towers) {
+      if (t.hp <= 0) continue;
+      if (t.hitFlash > 0) t.hitFlash -= dt;
+      if (!t.active) continue;
+      if (t.cooldown > 0) t.cooldown -= dt;
+
+      const enemySide = t.side === 'blue' ? 'red' : 'blue';
+      let best = null;
+      let bestDist = Infinity;
+      for (const u of game.units) {
+        if (u.side !== enemySide || u.hp <= 0 || u.deployTimer > 0) continue;
+        const d = Math.hypot(u.x - t.x, u.y - t.y) - u.radius;
+        if (d <= t.range && d < bestDist) {
+          bestDist = d;
+          best = u;
+        }
+      }
+      if (best && t.cooldown <= 0) {
+        t.cooldown = t.hitSpeed;
+        game.projectiles.push({
+          id: game.nextEntityId++,
+          kind: 'unit_proj',
+          side: t.side,
+          x: t.x,
+          y: t.y - 0.5,
+          target: best,
+          speed: 17,
+          dmg: t.dmg,
+          splash: 0,
+          color: t.side === 'blue' ? '#38bdf8' : '#fb7185'
+        });
+      }
+    }
+
+    const remainingProj = [];
+    for (const p of game.projectiles) {
+      if (p.kind === 'spell') {
+        const dx = p.targetX - p.x;
+        const dy = p.targetY - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d <= p.speed * dt) {
+          resolveSpellImpact(p.side, { id: p.cardId, splash: p.splash, dmg: p.dmg, towerDmg: p.towerDmg, knockback: p.knockback, stun: p.stun, color: p.color }, p.targetX, p.targetY);
+        } else {
+          p.x += (dx / d) * p.speed * dt;
+          p.y += (dy / d) * p.speed * dt;
+          remainingProj.push(p);
+        }
+      } else {
+        const tx = p.target.x;
+        const ty = p.target.y;
+        const dx = tx - p.x;
+        const dy = ty - p.y;
+        const d = Math.hypot(dx, dy);
+        if (d <= p.speed * dt || d < 0.35) {
+          if (p.splash > 0) {
+            const enemySide = p.side === 'blue' ? 'red' : 'blue';
+            game.effects.push({ kind: 'explosion', x: tx, y: ty, r: p.splash, life: 0.25, maxLife: 0.25, color: p.color });
+            game.units.forEach(u => {
+              if (u.side === enemySide && Math.hypot(u.x - tx, u.y - ty) - u.radius <= p.splash) applyDamage(u, p.dmg);
+            });
+            game.towers.forEach(t => {
+              if (t.side === enemySide && t.hp > 0 && Math.hypot(t.x - tx, t.y - ty) - t.radius <= p.splash) applyTowerDamage(t, p.dmg);
+            });
+          } else {
+            if (p.target.kind) applyTowerDamage(p.target, p.dmg);
+            else if (p.target.hp > 0) applyDamage(p.target, p.dmg);
+          }
+        } else {
+          p.x += (dx / d) * p.speed * dt;
+          p.y += (dy / d) * p.speed * dt;
+          remainingProj.push(p);
+        }
+      }
+    }
+    game.projectiles = remainingProj;
+
+    game.effects = game.effects.filter(e => {
+      e.life -= dt;
+      return e.life > 0;
+    });
+    if (game.screenShake > 0) game.screenShake = Math.max(0, game.screenShake - dt);
+    game.floatingTexts = game.floatingTexts.filter(ft => {
+      ft.life -= dt;
+      ft.y -= dt * 1.1;
+      return ft.life > 0;
+    });
+  }
+
+  // =========================================================================
+  // 8. SMART AI OPPONENT
+  // =========================================================================
+  function updateAI(dt) {
+    game.aiTimer -= dt;
+    if (game.aiTimer > 0) return;
+
+    const interval = aiDifficulty === 'hard' ? 1.0 : aiDifficulty === 'normal' ? 1.7 : 2.6;
+    game.aiTimer = interval + Math.random() * 0.9;
+
+    const threats = game.units.filter(u => u.side === 'blue' && u.y < 18.5);
+    if (threats.length > 0) {
+      threats.sort((a, b) => a.y - b.y);
+      const topThreat = threats[0];
+
+      if (threats.length >= 3) {
+        const spellIdx = game.redHand.findIndex(id => CARD_MAP[id].type === 'spell' && game.redElixir >= CARD_MAP[id].cost);
+        if (spellIdx !== -1) {
+          playCard('red', spellIdx, topThreat.x, topThreat.y);
+          return;
+        }
+      }
+
+      const defIdx = game.redHand.findIndex(id => CARD_MAP[id].type !== 'spell' && game.redElixir >= CARD_MAP[id].cost);
+      if (defIdx !== -1) {
+        const card = CARD_MAP[game.redHand[defIdx]];
+        const dx = topThreat.x < 9 ? 3.8 : 14.2;
+        const dy = card.type === 'building' ? 10.5 : Math.max(4.5, Math.min(13.5, topThreat.y - 2.2));
+        playCard('red', defIdx, dx, dy);
+        return;
+      }
+    }
+
+    const threshold = aiDifficulty === 'hard' ? 7.0 : 8.2;
+    if (game.redElixir >= threshold) {
+      const pushIdx = game.redHand.findIndex(id => CARD_MAP[id].type === 'troop' && game.redElixir >= CARD_MAP[id].cost);
+      if (pushIdx !== -1) {
+        const card = CARD_MAP[game.redHand[pushIdx]];
+        const laneX = Math.random() < 0.5 ? 3.5 : 14.5;
+        const y = card.speed < 1.8 ? 4.2 : 13.0;
+        playCard('red', pushIdx, laneX + (Math.random() - 0.5), y);
+      }
+    }
+  }
+
+  function endMatch(winner, reason) {
+    if (game.ended) return;
+    game.ended = true;
+    game.winner = winner;
+
+    if (winner === 'blue') {
+      sfx.play('victory');
+      document.getElementById('result-badge').textContent = '🏆';
+      document.getElementById('result-title').textContent = 'VICTORY!';
+      document.getElementById('result-title').className = 'font-display font-bold text-3xl text-amber-300';
+    } else if (winner === 'red') {
+      sfx.play('defeat');
+      document.getElementById('result-badge').textContent = '💀';
+      document.getElementById('result-title').textContent = 'DEFEAT';
+      document.getElementById('result-title').className = 'font-display font-bold text-3xl text-rose-400';
+    } else {
+      document.getElementById('result-badge').textContent = '🤝';
+      document.getElementById('result-title').textContent = 'DRAW';
+      document.getElementById('result-title').className = 'font-display font-bold text-3xl text-slate-300';
+    }
+    document.getElementById('result-sub').textContent = reason;
+    document.getElementById('result-blue-crowns').textContent = game.blueCrowns;
+    document.getElementById('result-red-crowns').textContent = game.redCrowns;
+    resultOverlay.classList.remove('hidden');
+  }
+
+  // =========================================================================
+  // 9. CANVAS RENDERING (ARENA, TOWERS, CHARACTERS, SPELLS, PREVIEW)
+  // =========================================================================
+  let scale = 1, offsetX = 0, offsetY = 0;
+
+  function resizeCanvas() {
+    const wrap = document.getElementById('arena-wrap');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = wrap.clientWidth;
+    const h = wrap.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const sx = w / ARENA_W;
+    const sy = h / ARENA_H;
+    scale = Math.min(sx, sy);
+    offsetX = (w - ARENA_W * scale) / 2;
+    offsetY = (h - ARENA_H * scale) / 2;
+  }
+
+  function toScreen(ax, ay) {
+    return { x: offsetX + ax * scale, y: offsetY + ay * scale };
+  }
+  function toArena(sx, sy) {
+    return { x: (sx - offsetX) / scale, y: (sy - offsetY) / scale };
+  }
+
+  function drawArena() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    const topLeft = toScreen(0, 0);
+    const arenaPxW = ARENA_W * scale;
+    const arenaPxH = ARENA_H * scale;
+    const nowSec = performance.now() / 1000;
+
+    // Outer stadium stone surround
+    ctx.fillStyle = '#475569';
+    ctx.fillRect(0, 0, w, h);
+
+    // Top & Bottom Royal Moats behind King Towers
+    const topMoat = toScreen(0, -1.5);
+    ctx.fillStyle = '#0284c7';
+    ctx.fillRect(topLeft.x, 0, arenaPxW, topLeft.y + 1.6 * scale);
+    ctx.fillRect(topLeft.x, topLeft.y + arenaPxH - 1.6 * scale, arenaPxW, h);
+
+    // Sunny Royal Arena Checkerboard Grass
+    const tile = scale;
+    for (let gx = 0; gx < ARENA_W; gx++) {
+      for (let gy = 0; gy < ARENA_H; gy++) {
+        const checker = (gx + gy) % 2 === 0;
+        ctx.fillStyle = checker ? '#92c949' : '#85bd3f';
+        ctx.fillRect(topLeft.x + gx * tile, topLeft.y + gy * tile, tile + 0.6, tile + 0.6);
+      }
+    }
+
+    // Golden-Tan Cobblestone Paths
+    const drawGoldenPath = (ax, ay, aw, ah) => {
+      const p = toScreen(ax, ay);
+      ctx.fillStyle = '#b68c3a';
+      ctx.fillRect(p.x - 1.5, p.y - 1.5, aw * scale + 3, ah * scale + 3);
+      ctx.fillStyle = '#d8b45c';
+      ctx.fillRect(p.x, p.y, aw * scale, ah * scale);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillRect(p.x, p.y, aw * scale, 2);
+    };
+    drawGoldenPath(3.5 - 0.8, 3.0, 1.6, 26.0);
+    drawGoldenPath(14.5 - 0.8, 3.0, 1.6, 26.0);
+    drawGoldenPath(3.5, 2.8, 11.0, 1.3);
+    drawGoldenPath(3.5, 27.9, 11.0, 1.3);
+
+    // Royal River (y = 15..17) with animated water shimmer & stone banks
+    const riv = toScreen(0, 15.0);
+    const rivGrad = ctx.createLinearGradient(0, riv.y, 0, riv.y + 2 * scale);
+    rivGrad.addColorStop(0, '#0369a1');
+    rivGrad.addColorStop(0.3, '#0284c7');
+    rivGrad.addColorStop(0.65, '#38bdf8');
+    rivGrad.addColorStop(1, '#0369a1');
+    ctx.fillStyle = rivGrad;
+    ctx.fillRect(riv.x, riv.y, arenaPxW, 2.0 * scale);
+
+    ctx.fillStyle = 'rgba(224, 242, 254, 0.35)';
+    for (let i = 0; i < 10; i++) {
+      const rx = ((i * 2.1 + nowSec * 0.85) % ARENA_W) * scale + topLeft.x;
+      const ry = riv.y + (0.4 + (i % 3) * 0.45) * scale;
+      ctx.fillRect(rx, ry, 0.9 * scale, 2);
+    }
+
+    // Stone retaining walls along river
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(riv.x, riv.y - 0.2 * scale, arenaPxW, 0.2 * scale);
+    ctx.fillRect(riv.x, riv.y + 2.0 * scale, arenaPxW, 0.2 * scale);
+
+    // Golden-Wood Bridges with raised side rails
+    [3.5, 14.5].forEach(bx => {
+      const br = toScreen(bx - 1.25, 14.75);
+      const bw = 2.5 * scale;
+      const bh = 2.5 * scale;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(br.x - 4, br.y + 4, bw + 4, bh);
+      ctx.fillStyle = '#ca8a04';
+      ctx.fillRect(br.x, br.y, bw, bh);
+      for (let p = 0; p < 5; p++) {
+        const py = br.y + p * (bh / 5) + 1.5;
+        ctx.fillStyle = p % 2 === 0 ? '#eab308' : '#d97706';
+        ctx.fillRect(br.x + 3, py, bw - 6, bh / 5 - 3);
+      }
+      ctx.fillStyle = '#a16207';
+      ctx.fillRect(br.x - 3, br.y - 2, 5, bh + 4);
+      ctx.fillRect(br.x + bw - 2, br.y - 2, 5, bh + 4);
+    });
+
+    // Side Stone Stadium Walls & Turrets
+    const wallW = Math.max(6, scale * 0.45);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(topLeft.x - wallW, topLeft.y, wallW, arenaPxH);
+    ctx.fillRect(topLeft.x + arenaPxW, topLeft.y, wallW, arenaPxH);
+    ctx.fillStyle = '#94a3b8';
+    for (let sy = 2; sy < ARENA_H; sy += 6) {
+      const wp = toScreen(0, sy);
+      ctx.fillRect(topLeft.x - wallW - 2, wp.y, wallW + 4, scale * 1.1);
+      ctx.fillRect(topLeft.x + arenaPxW - 2, wp.y, wallW + 4, scale * 1.1);
+    }
+
+    // Flickering Corner Stadium Torches
+    [[0.4, 1.2], [17.6, 1.2], [0.4, 30.8], [17.6, 30.8]].forEach(([tx, ty], idx) => {
+      const tp = toScreen(tx, ty);
+      const flick = Math.sin(nowSec * 11 + idx * 2) * 1.8;
+      const glow = ctx.createRadialGradient(tp.x, tp.y, 1, tp.x, tp.y, scale * 0.8 + flick);
+      glow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+      glow.addColorStop(0.45, 'rgba(249, 115, 22, 0.6)');
+      glow.addColorStop(1, 'rgba(249, 115, 22, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(tp.x, tp.y, scale * 0.8 + flick, 0, Math.PI * 2); ctx.fill();
+    });
+
+    // Center Top & Bottom Golden Crown Emblems
+    [toScreen(9, 1.1), toScreen(9, 30.9)].forEach(cp => {
+      ctx.fillStyle = '#facc15';
+      ctx.strokeStyle = '#78350f';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cp.x, cp.y, scale * 0.42, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
+
+    // Restricted territory overlay when placing a troop/building
+    if (selectedHandIndex !== null && !game.ended) {
+      const card = CARD_MAP[game.blueHand[selectedHandIndex]];
+      if (card && card.type !== 'spell') {
+        const redLeftDead = !game.towers.find(t => t.id === 'red_left' && t.hp > 0);
+        const redRightDead = !game.towers.find(t => t.id === 'red_right' && t.hp > 0);
+
+        ctx.fillStyle = 'rgba(225, 29, 72, 0.25)';
+        if (!redLeftDead && !redRightDead) {
+          const z = toScreen(0, 0);
+          ctx.fillRect(z.x, z.y, arenaPxW, 17.3 * scale);
+        } else {
+          const topBlock = toScreen(0, 0);
+          ctx.fillRect(topBlock.x, topBlock.y, arenaPxW, 11.5 * scale);
+          if (!redLeftDead) {
+            const lb = toScreen(0, 11.5);
+            ctx.fillRect(lb.x, lb.y, 9 * scale, 5.8 * scale);
+          }
+          if (!redRightDead) {
+            const rb = toScreen(9, 11.5);
+            ctx.fillRect(rb.x, rb.y, 9 * scale, 5.8 * scale);
+          }
+        }
+      }
+
+      if (pointerArenaPos && card) {
+        const p = toScreen(pointerArenaPos.x, pointerArenaPos.y);
+        const valid = isValidDeployPos('blue', card, pointerArenaPos.x, pointerArenaPos.y);
+        const rad = (card.splash > 0 ? card.splash : (card.range > 1.5 ? card.range : 1.1)) * scale;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rad, 0, Math.PI * 2);
+        ctx.fillStyle = valid ? 'rgba(56, 189, 248, 0.26)' : 'rgba(244, 63, 94, 0.3)';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = valid ? '#0ea5e9' : '#f43f5e';
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  function drawTowers() {
+    for (const t of game.towers) {
+      const p = toScreen(t.x, t.y);
+      const r = t.radius * scale;
+      const isBlue = t.side === 'blue';
+
+      if (t.hp <= 0) {
+        ctx.fillStyle = '#475569';
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#334155';
+        ctx.beginPath(); ctx.arc(p.x - r * 0.25, p.y + r * 0.1, r * 0.45, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x + r * 0.3, p.y - r * 0.2, r * 0.35, 0, Math.PI * 2); ctx.fill();
+        continue;
+      }
+
+      // Long directional cast shadow to bottom-left (just like Clash Royale)
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.moveTo(p.x - r, p.y - r * 0.6);
+      ctx.lineTo(p.x - r * 1.9, p.y + r * 1.5);
+      ctx.lineTo(p.x + r * 0.3, p.y + r * 1.5);
+      ctx.lineTo(p.x + r, p.y + r * 0.8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Tower 3D Stone Wall Front Face
+      ctx.fillStyle = t.hitFlash > 0 ? '#ffffff' : '#94a3b8';
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(p.x - r, p.y - r * 0.8, r * 2, r * 1.95, r * 0.22);
+      ctx.fill(); ctx.stroke();
+
+      // Upper White-Stone Battlement Deck
+      ctx.fillStyle = t.hitFlash > 0 ? '#ffffff' : '#e2e8f0';
+      ctx.beginPath();
+      ctx.roundRect(p.x - r, p.y - r, r * 2, r * 1.65, r * 0.22);
+      ctx.fill(); ctx.stroke();
+
+      // Team-colored Keep Roof
+      ctx.fillStyle = isBlue ? '#0284c7' : '#dc2626';
+      ctx.beginPath();
+      ctx.roundRect(p.x - r * 0.72, p.y - r * 0.75, r * 1.44, r * 1.15, r * 0.18);
+      ctx.fill(); ctx.stroke();
+
+      // Stone Crenellations
+      ctx.fillStyle = '#f1f5f9';
+      const cs = r * 0.3;
+      [[-r * 0.94, -r * 0.94], [r * 0.64, -r * 0.94], [-r * 0.94, r * 0.36], [r * 0.64, r * 0.36]].forEach(([cx, cy]) => {
+        ctx.fillRect(p.x + cx, p.y + cy, cs, cs);
+        ctx.strokeRect(p.x + cx, p.y + cy, cs, cs);
+      });
+
+      // Wooden Ladder on Princess Towers / Golden Crown Plaque on Front Wall
+      if (t.kind === 'princess') {
+        ctx.fillStyle = '#92400e';
+        ctx.fillRect(p.x - r * 0.16, p.y + r * 0.45, r * 0.32, r * 0.65);
+        ctx.fillStyle = '#d97706';
+        ctx.fillRect(p.x - r * 0.12, p.y + r * 0.58, r * 0.24, r * 0.08);
+        ctx.fillRect(p.x - r * 0.12, p.y + r * 0.82, r * 0.24, r * 0.08);
+      } else {
+        ctx.fillStyle = '#facc15';
+        ctx.fillRect(p.x - r * 0.22, p.y + r * 0.55, r * 0.44, r * 0.36);
+        ctx.strokeRect(p.x - r * 0.22, p.y + r * 0.55, r * 0.44, r * 0.36);
+      }
+
+      if (t.kind === 'king') {
+        if (t.active) {
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath(); ctx.arc(p.x, p.y - r * 0.15, r * 0.4, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#334155';
+          ctx.fillRect(p.x - r * 0.16, isBlue ? p.y - r * 0.88 : p.y - r * 0.15, r * 0.32, r * 0.72);
+        }
+        ctx.fillStyle = '#facc15';
+        ctx.strokeStyle = '#78350f';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(p.x - r * 0.36, p.y + r * 0.14);
+        ctx.lineTo(p.x - r * 0.4, p.y - r * 0.16);
+        ctx.lineTo(p.x - r * 0.14, p.y);
+        ctx.lineTo(p.x, p.y - r * 0.25);
+        ctx.lineTo(p.x + r * 0.14, p.y);
+        ctx.lineTo(p.x + r * 0.4, p.y - r * 0.16);
+        ctx.lineTo(p.x + r * 0.36, p.y + r * 0.14);
+        ctx.closePath();
+        ctx.fill(); ctx.stroke();
+      } else {
+        ctx.fillStyle = isBlue ? '#bae6fd' : '#fecdd3';
+        ctx.beginPath(); ctx.arc(p.x, p.y - r * 0.16, r * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+
+      // Clash-style HP Bar with Crown Badge
+      const bw = r * 2.15;
+      const bh = Math.max(6, scale * 0.28);
+      const bx = p.x - bw / 2;
+      const by = isBlue ? p.y + r + 5 : p.y - r - bh - 6;
+      ctx.fillStyle = '#090d16';
+      ctx.beginPath(); ctx.roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 3); ctx.fill();
+      ctx.fillStyle = isBlue ? '#0ea5e9' : '#ef4444';
+      ctx.beginPath(); ctx.roundRect(bx, by, bw * (t.hp / t.maxHp), bh, 2); ctx.fill();
+
+      // Tiny crown icon on left of HP bar
+      ctx.fillStyle = '#facc15';
+      ctx.beginPath(); ctx.arc(bx - 2, by + bh / 2, bh * 0.55, 0, Math.PI * 2); ctx.fill();
+
+      ctx.font = `800 ${Math.max(9, Math.round(scale * 0.44))}px Inter, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Math.ceil(t.hp), p.x, by + bh / 2 + 0.5);
+    }
+  }
+
+  function drawUnitSprite(u, px, py, r) {
+    const isBlue = u.side === 'blue';
+    const dir = isBlue ? -1 : 1;
+    const teamDark = isBlue ? '#0369a1' : '#991b1b';
+    const teamMid = isBlue ? '#0ea5e9' : '#dc2626';
+    const teamLight = isBlue ? '#7dd3fc' : '#fca5a5';
+
+    const now = performance.now() / 1000;
+    const isMoving = u.speed > 0 && u.deployTimer <= 0 && u.stunTimer <= 0;
+    const walk = isMoving ? Math.sin(u.walkPhase) : 0;
+    const walkCos = isMoving ? Math.cos(u.walkPhase) : 0;
+    const breathe = Math.sin(now * 3.5 + u.id) * 0.03;
+    const atkProg = u.attackAnim > 0 ? (1 - u.attackAnim / 0.22) : 0;
+    const swing = u.attackAnim > 0 ? Math.sin(atkProg * Math.PI) : 0;
+
+    // Tall, unmistakable figurine scale (~2.15x collision radius)
+    const vr = Math.max(13, r * 2.15);
+    const flash = u.hitFlash > 0;
+    const stun = u.stunTimer > 0;
+
+    const grad3D = (x0, y0, x1, y1, c0, c1, c2) => {
+      if (flash) return '#ffffff';
+      const g = ctx.createLinearGradient(x0, y0, x1, y1);
+      g.addColorStop(0, c0);
+      g.addColorStop(0.5, c1);
+      g.addColorStop(1, c2);
+      return g;
+    };
+
+    // Articulated walking legs with knees & boots
+    const drawLegs = (hipW, legLen, pantCol, bootCol) => {
+      const lFootY = vr * 0.22 + legLen + walk * vr * 0.18;
+      const rFootY = vr * 0.22 + legLen - walk * vr * 0.18;
+      // Left leg
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = Math.max(2.5, vr * 0.18);
+      ctx.beginPath(); ctx.moveTo(-vr * hipW, vr * 0.2); ctx.lineTo(-vr * (hipW + 0.04), lFootY); ctx.stroke();
+      ctx.strokeStyle = pantCol; ctx.lineWidth = Math.max(1.5, vr * 0.12);
+      ctx.beginPath(); ctx.moveTo(-vr * hipW, vr * 0.2); ctx.lineTo(-vr * (hipW + 0.04), lFootY); ctx.stroke();
+      // Right leg
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = Math.max(2.5, vr * 0.18);
+      ctx.beginPath(); ctx.moveTo(vr * hipW, vr * 0.2); ctx.lineTo(vr * (hipW + 0.04), rFootY); ctx.stroke();
+      ctx.strokeStyle = pantCol; ctx.lineWidth = Math.max(1.5, vr * 0.12);
+      ctx.beginPath(); ctx.moveTo(vr * hipW, vr * 0.2); ctx.lineTo(vr * (hipW + 0.04), rFootY); ctx.stroke();
+      // Boots
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.4;
+      ctx.fillStyle = bootCol;
+      ctx.beginPath(); ctx.ellipse(-vr * (hipW + 0.04), lFootY, vr * 0.15, vr * 0.09, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(vr * (hipW + 0.04), rFootY, vr * 0.15, vr * 0.09, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    };
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.scale(1 + breathe, 1 - breathe);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1.6;
+
+    if (stun) {
+      ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.ellipse(0, vr * 0.4, vr * 0.75, vr * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.6;
+    }
+
+    if (u.cardId === 'knight') {
+      // Flowing cape
+      ctx.fillStyle = teamDark;
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.3, -vr * 0.22);
+      ctx.quadraticCurveTo(-vr * 0.48 + walk * 3, vr * 0.38, -vr * 0.18 + walk * 2, vr * 0.45);
+      ctx.lineTo(vr * 0.18 + walk * 2, vr * 0.45);
+      ctx.quadraticCurveTo(vr * 0.48 + walk * 3, vr * 0.38, vr * 0.3, -vr * 0.22);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      drawLegs(0.16, vr * 0.28, '#475569', '#451a03');
+
+      // Sculpted armored torso & flared tunic hem
+      ctx.fillStyle = grad3D(-vr * 0.38, -vr * 0.3, vr * 0.38, vr * 0.3, teamLight, teamMid, teamDark);
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.36, -vr * 0.28);
+      ctx.lineTo(vr * 0.36, -vr * 0.28);
+      ctx.lineTo(vr * 0.28, vr * 0.24);
+      ctx.lineTo(-vr * 0.28, vr * 0.24);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // Steel breastplate
+      ctx.fillStyle = grad3D(-vr * 0.3, -vr * 0.25, vr * 0.3, vr * 0.1, '#f8fafc', '#cbd5e1', '#64748b');
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.3, -vr * 0.26);
+      ctx.lineTo(vr * 0.3, -vr * 0.26);
+      ctx.lineTo(vr * 0.22, vr * 0.08);
+      ctx.lineTo(0, vr * 0.16);
+      ctx.lineTo(-vr * 0.22, vr * 0.08);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // Heater Shield on left arm
+      ctx.fillStyle = grad3D(-vr * 0.55, -vr * 0.2, -vr * 0.25, vr * 0.25, '#93c5fd', teamMid, teamDark);
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.56, -vr * 0.24 + walkCos * 2);
+      ctx.lineTo(-vr * 0.24, -vr * 0.24 + walkCos * 2);
+      ctx.lineTo(-vr * 0.26, vr * 0.1 + walkCos * 2);
+      ctx.lineTo(-vr * 0.4, vr * 0.26 + walkCos * 2);
+      ctx.lineTo(-vr * 0.54, vr * 0.1 + walkCos * 2);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // Broadsword arm
+      ctx.save();
+      ctx.translate(vr * 0.38, -vr * 0.16);
+      ctx.rotate(dir * 0.25 + swing * dir * 1.75 - walk * 0.22);
+      ctx.fillStyle = grad3D(-vr * 0.08, -vr * 0.85, vr * 0.08, 0, '#ffffff', '#cbd5e1', '#64748b');
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.07, 0); ctx.lineTo(-vr * 0.08, -vr * 0.78); ctx.lineTo(0, -vr * 0.94); ctx.lineTo(vr * 0.08, -vr * 0.78); ctx.lineTo(vr * 0.07, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#eab308'; ctx.fillRect(-vr * 0.16, -vr * 0.06, vr * 0.32, vr * 0.08);
+      ctx.restore();
+
+      if (swing > 0.25) {
+        ctx.strokeStyle = 'rgba(224,242,254,0.85)'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(vr * 0.1, -vr * 0.2, vr * 0.9, -Math.PI * 0.65, Math.PI * 0.1); ctx.stroke();
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.6;
+      }
+
+      // Sculpted Head & Cheek-guarded Helmet + Plume
+      ctx.fillStyle = '#fdba74';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.2, -vr * 0.56, vr * 0.4, vr * 0.32, vr * 0.12); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(-vr * 0.16, -vr * 0.38, vr * 0.32, vr * 0.07);
+      ctx.fillStyle = grad3D(-vr * 0.25, -vr * 0.78, vr * 0.25, -vr * 0.4, '#f8fafc', '#cbd5e1', '#64748b');
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.25, -vr * 0.46);
+      ctx.quadraticCurveTo(-vr * 0.24, -vr * 0.8, 0, -vr * 0.8);
+      ctx.quadraticCurveTo(vr * 0.24, -vr * 0.8, vr * 0.25, -vr * 0.46);
+      ctx.lineTo(vr * 0.1, -vr * 0.52);
+      ctx.lineTo(0, -vr * 0.42);
+      ctx.lineTo(-vr * 0.1, -vr * 0.52);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = teamMid;
+      ctx.beginPath();
+      ctx.moveTo(0, -vr * 0.78);
+      ctx.quadraticCurveTo(-vr * 0.14, -vr * 1.05, vr * 0.12, -vr * 1.04);
+      ctx.quadraticCurveTo(vr * 0.14, -vr * 0.85, 0, -vr * 0.78);
+      ctx.fill(); ctx.stroke();
+
+    } else if (u.cardId === 'archers' || u.cardId === 'musketeer') {
+      const isMusk = u.cardId === 'musketeer';
+      drawLegs(0.14, vr * 0.26, '#3f2e1e', '#292524');
+
+      // Flared Cloak / Coat
+      ctx.fillStyle = grad3D(-vr * 0.32, -vr * 0.25, vr * 0.32, vr * 0.3, isMusk ? '#818cf8' : teamLight, isMusk ? '#4f46e5' : teamMid, isMusk ? '#312e81' : teamDark);
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.26, -vr * 0.26);
+      ctx.lineTo(vr * 0.26, -vr * 0.26);
+      ctx.lineTo(vr * 0.34, vr * 0.26);
+      ctx.lineTo(-vr * 0.34, vr * 0.26);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // Head
+      ctx.fillStyle = '#fde68a';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.18, -vr * 0.56, vr * 0.36, vr * 0.32, vr * 0.12); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-vr * 0.1, -vr * 0.46, vr * 0.06, vr * 0.07);
+      ctx.fillRect(vr * 0.04, -vr * 0.46, vr * 0.06, vr * 0.07);
+
+      if (isMusk) {
+        // Tricorne hat + feather
+        ctx.fillStyle = '#1e1b4b';
+        ctx.beginPath();
+        ctx.moveTo(-vr * 0.4, -vr * 0.56);
+        ctx.lineTo(0, -vr * 0.88);
+        ctx.lineTo(vr * 0.4, -vr * 0.56);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = teamLight;
+        ctx.beginPath(); ctx.ellipse(vr * 0.24, -vr * 0.78, vr * 0.16, vr * 0.07, -0.4, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // Pointed Archer Hood
+        ctx.fillStyle = grad3D(-vr * 0.22, -vr * 0.78, vr * 0.22, -vr * 0.4, '#4ade80', '#16a34a', '#14532d');
+        ctx.beginPath();
+        ctx.moveTo(-vr * 0.24, -vr * 0.44);
+        ctx.quadraticCurveTo(0, -vr * 0.86, vr * 0.24, -vr * 0.44);
+        ctx.lineTo(vr * 0.16, -vr * 0.58);
+        ctx.lineTo(-vr * 0.16, -vr * 0.58);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+
+      // Bow or Musket
+      ctx.save();
+      ctx.translate(vr * 0.28, -vr * 0.12 + (isMusk ? swing * 3 : 0));
+      if (isMusk) {
+        ctx.fillStyle = '#78350f'; ctx.fillRect(-vr * 0.06, -vr * 0.08, vr * 0.12, vr * 0.26);
+        ctx.fillStyle = '#94a3b8'; ctx.fillRect(-vr * 0.05, dir < 0 ? -vr * 0.75 : 0, vr * 0.1, vr * 0.75);
+        ctx.strokeRect(-vr * 0.05, dir < 0 ? -vr * 0.75 : 0, vr * 0.1, vr * 0.75);
+        if (swing > 0.4) {
+          ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.arc(0, dir * vr * 0.82, vr * 0.18, 0, Math.PI * 2); ctx.fill();
+        }
+      } else {
+        ctx.strokeStyle = '#92400e'; ctx.lineWidth = 2.6;
+        ctx.beginPath(); ctx.arc(0, dir * vr * 0.1, vr * 0.42, dir < 0 ? -Math.PI * 0.8 : Math.PI * 0.2, dir < 0 ? -Math.PI * 0.2 : Math.PI * 0.8); ctx.stroke();
+        ctx.strokeStyle = '#fef08a'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(-vr * 0.28, dir * vr * 0.32); ctx.lineTo(0, dir * (vr * 0.1 - swing * vr * 0.22)); ctx.lineTo(vr * 0.28, dir * vr * 0.32); ctx.stroke();
+      }
+      ctx.restore();
+
+    } else if (u.cardId === 'giant' || u.cardId === 'pekka') {
+      const isPekka = u.cardId === 'pekka';
+      drawLegs(0.24, vr * 0.28, isPekka ? '#1e293b' : '#78350f', isPekka ? '#0f172a' : '#451a03');
+
+      // Sculpted Broad Shoulders & Tapered Waist
+      ctx.fillStyle = grad3D(-vr * 0.56, -vr * 0.35, vr * 0.56, vr * 0.3, isPekka ? '#6366f1' : '#d97706', isPekka ? '#312e81' : '#92400e', isPekka ? '#1e1b4b' : '#451a03');
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.56, -vr * 0.34);
+      ctx.lineTo(vr * 0.56, -vr * 0.34);
+      ctx.lineTo(vr * 0.4, vr * 0.28);
+      ctx.lineTo(-vr * 0.4, vr * 0.28);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+      // Belt
+      ctx.fillStyle = teamMid;
+      ctx.fillRect(-vr * 0.44, vr * 0.04, vr * 0.88, vr * 0.14);
+
+      // Muscular Forearms & Hands
+      const lArmY = (dir * vr * 0.14) + walk * vr * 0.15 + swing * dir * vr * 0.42;
+      const rArmY = (dir * vr * 0.14) - walk * vr * 0.15 + swing * dir * vr * 0.42;
+      ctx.fillStyle = isPekka ? '#475569' : '#fdba74';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.72, -vr * 0.25, vr * 0.22, vr * 0.48 + lArmY * 0.3, 6); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(vr * 0.5, -vr * 0.25, vr * 0.22, vr * 0.48 + rArmY * 0.3, 6); ctx.fill(); ctx.stroke();
+
+      if (isPekka) {
+        ctx.save(); ctx.translate(vr * 0.62, rArmY * 0.3); ctx.rotate(swing * dir * 1.4);
+        ctx.fillStyle = grad3D(-vr * 0.08, -vr * 0.9, vr * 0.08, 0, '#ffffff', '#cbd5e1', '#475569');
+        ctx.beginPath(); ctx.moveTo(-vr * 0.09, 0); ctx.lineTo(-vr * 0.11, -vr * 0.9); ctx.lineTo(0, -vr * 1.08); ctx.lineTo(vr * 0.11, -vr * 0.9); ctx.lineTo(vr * 0.09, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+
+      // Sculpted Head / Angular Horned Helm
+      if (isPekka) {
+        ctx.fillStyle = '#475569';
+        ctx.beginPath();
+        ctx.moveTo(-vr * 0.3, -vr * 0.34); ctx.lineTo(-vr * 0.34, -vr * 0.68); ctx.lineTo(0, -vr * 0.78); ctx.lineTo(vr * 0.34, -vr * 0.68); ctx.lineTo(vr * 0.3, -vr * 0.34);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#a855f7';
+        ctx.beginPath(); ctx.moveTo(-vr * 0.28, -vr * 0.62); ctx.lineTo(-vr * 0.54, -vr * 1.05); ctx.lineTo(-vr * 0.12, -vr * 0.75); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(vr * 0.28, -vr * 0.62); ctx.lineTo(vr * 0.54, -vr * 1.05); ctx.lineTo(vr * 0.12, -vr * 0.75); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#f0abfc';
+        ctx.fillRect(-vr * 0.2, -vr * 0.56, vr * 0.14, vr * 0.1); ctx.fillRect(vr * 0.06, -vr * 0.56, vr * 0.14, vr * 0.1);
+      } else {
+        ctx.fillStyle = '#fdba74';
+        ctx.beginPath(); ctx.roundRect(-vr * 0.28, -vr * 0.72, vr * 0.56, vr * 0.42, vr * 0.14); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#c2410c';
+        ctx.beginPath();
+        ctx.moveTo(-vr * 0.28, -vr * 0.48); ctx.lineTo(vr * 0.28, -vr * 0.48); ctx.lineTo(vr * 0.2, -vr * 0.24); ctx.lineTo(0, -vr * 0.18); ctx.lineTo(-vr * 0.2, -vr * 0.24);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-vr * 0.15, -vr * 0.6, vr * 0.08, vr * 0.08); ctx.fillRect(vr * 0.07, -vr * 0.6, vr * 0.08, vr * 0.08);
+      }
+
+    } else if (u.cardId === 'valkyrie') {
+      drawLegs(0.16, vr * 0.26, '#78350f', '#451a03');
+      const spinAngle = u.attackAnim > 0 ? atkProg * Math.PI * 2 : walk * 0.5;
+      if (u.attackAnim > 0) {
+        ctx.strokeStyle = 'rgba(251,146,60,0.65)'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, -vr * 0.1, vr * 1.0, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.6;
+      }
+      ctx.save(); ctx.rotate(spinAngle);
+      ctx.fillStyle = '#78350f'; ctx.fillRect(-vr * 0.05, -vr * 0.96, vr * 0.1, vr * 1.92);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.28, -vr * 0.96); ctx.quadraticCurveTo(0, -vr * 0.65, vr * 0.28, -vr * 0.96); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-vr * 0.28, vr * 0.96); ctx.quadraticCurveTo(0, vr * 0.65, vr * 0.28, vr * 0.96); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = grad3D(-vr * 0.34, -vr * 0.26, vr * 0.34, vr * 0.24, '#fb923c', '#ea580c', '#9a3412');
+      ctx.beginPath(); ctx.moveTo(-vr * 0.34, -vr * 0.26); ctx.lineTo(vr * 0.34, -vr * 0.26); ctx.lineTo(vr * 0.26, vr * 0.24); ctx.lineTo(-vr * 0.26, vr * 0.24); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fed7aa';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.2, -vr * 0.56, vr * 0.4, vr * 0.32, vr * 0.12); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#c2410c';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.24, -vr * 0.46); ctx.quadraticCurveTo(0, -vr * 0.78, vr * 0.24, -vr * 0.46); ctx.lineTo(vr * 0.28, -vr * 0.24); ctx.lineTo(vr * 0.16, -vr * 0.52); ctx.lineTo(-vr * 0.16, -vr * 0.52); ctx.lineTo(-vr * 0.28, -vr * 0.24); ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    } else if (u.cardId === 'dragon') {
+      const flap = Math.sin(now * 14 + u.id) * 0.38;
+      // Serpentine tail
+      ctx.strokeStyle = '#991b1b'; ctx.lineWidth = vr * 0.16;
+      ctx.beginPath(); ctx.moveTo(0, vr * 0.3); ctx.quadraticCurveTo(Math.sin(now * 6) * vr * 0.3, vr * 0.65, 0, vr * 0.85); ctx.stroke();
+      ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1.6;
+      // Scalloped bat wings
+      ctx.fillStyle = '#b91c1c';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.2, -vr * 0.1); ctx.lineTo(-vr * 1.25, -vr * (0.55 + flap)); ctx.quadraticCurveTo(-vr * 0.85, vr * 0.15, -vr * 0.4, vr * 0.25); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(vr * 0.2, -vr * 0.1); ctx.lineTo(vr * 1.25, -vr * (0.55 + flap)); ctx.quadraticCurveTo(vr * 0.85, vr * 0.15, vr * 0.4, vr * 0.25); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Dragon body & reptilian snout
+      ctx.fillStyle = grad3D(-vr * 0.35, -vr * 0.4, vr * 0.35, vr * 0.4, '#f87171', '#ef4444', '#991b1b');
+      ctx.beginPath(); ctx.moveTo(-vr * 0.28, -vr * 0.35); ctx.lineTo(vr * 0.28, -vr * 0.35); ctx.lineTo(vr * 0.2, vr * 0.35); ctx.lineTo(-vr * 0.2, vr * 0.35); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Reptilian horned head
+      ctx.beginPath(); ctx.moveTo(-vr * 0.22, -vr * 0.35); ctx.lineTo(-vr * 0.14, -vr * 0.72); ctx.lineTo(vr * 0.14, -vr * 0.72); ctx.lineTo(vr * 0.22, -vr * 0.35); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fef3c7';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.16, -vr * 0.62); ctx.lineTo(-vr * 0.32, -vr * 0.9); ctx.lineTo(-vr * 0.06, -vr * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(vr * 0.16, -vr * 0.62); ctx.lineTo(vr * 0.32, -vr * 0.9); ctx.lineTo(vr * 0.06, -vr * 0.7); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(-vr * 0.12, -vr * 0.56, vr * 0.07, vr * 0.08); ctx.fillRect(vr * 0.05, -vr * 0.56, vr * 0.07, vr * 0.08);
+
+    } else if (u.cardId === 'hog') {
+      const gallop = Math.sin(u.walkPhase * 1.4) * 3;
+      // Charging Boar body + 4 hooves
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(-vr * 0.36, vr * 0.2 + gallop * 0.4, vr * 0.14, vr * 0.28);
+      ctx.fillRect(vr * 0.22, vr * 0.2 - gallop * 0.4, vr * 0.14, vr * 0.28);
+      ctx.fillStyle = grad3D(-vr * 0.45, -vr * 0.2, vr * 0.45, vr * 0.3, '#b45309', '#78350f', '#451a03');
+      ctx.beginPath(); ctx.roundRect(-vr * 0.42, -vr * 0.25 + gallop * 0.3, vr * 0.84, vr * 0.55, vr * 0.24); ctx.fill(); ctx.stroke();
+      // Tusks
+      ctx.fillStyle = '#fef3c7';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.25, dir * vr * 0.3); ctx.lineTo(-vr * 0.42, dir * vr * 0.55); ctx.lineTo(-vr * 0.14, dir * vr * 0.4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(vr * 0.25, dir * vr * 0.3); ctx.lineTo(vr * 0.42, dir * vr * 0.55); ctx.lineTo(vr * 0.14, dir * vr * 0.4); ctx.closePath(); ctx.fill(); ctx.stroke();
+      // Muscular Rider + Mohawk + Warhammer
+      ctx.fillStyle = '#9a3412';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.24, -vr * 0.55, vr * 0.48, vr * 0.42, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(-vr * 0.06, -vr * 0.74, vr * 0.12, vr * 0.26);
+      ctx.save(); ctx.translate(vr * 0.34, -vr * 0.32); ctx.rotate(swing * dir * 1.5);
+      ctx.fillStyle = '#78350f'; ctx.fillRect(-vr * 0.05, -vr * 0.52, vr * 0.1, vr * 0.52);
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(-vr * 0.18, -vr * 0.66, vr * 0.36, vr * 0.2); ctx.strokeRect(-vr * 0.18, -vr * 0.66, vr * 0.36, vr * 0.2);
+      ctx.restore();
+
+    } else if (u.cardId === 'cannon') {
+      // Wooden Gun Carriage + Wheels + Tapered Iron Barrel
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(-vr * 0.62, -vr * 0.25, vr * 0.14, vr * 0.55);
+      ctx.fillRect(vr * 0.48, -vr * 0.25, vr * 0.14, vr * 0.55);
+      ctx.fillStyle = '#78350f';
+      ctx.beginPath(); ctx.roundRect(-vr * 0.48, -vr * 0.35, vr * 0.96, vr * 0.7, 6); ctx.fill(); ctx.stroke();
+      const recoil = swing * vr * 0.2;
+      ctx.fillStyle = grad3D(-vr * 0.2, -vr * 0.8, vr * 0.2, 0, '#64748b', '#334155', '#0f172a');
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.22, vr * 0.1 - dir * recoil);
+      ctx.lineTo(-vr * 0.15, (dir < 0 ? -vr * 0.82 : vr * 0.82) - dir * recoil);
+      ctx.lineTo(vr * 0.15, (dir < 0 ? -vr * 0.82 : vr * 0.82) - dir * recoil);
+      ctx.lineTo(vr * 0.22, vr * 0.1 - dir * recoil);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    } else if (u.cardId === 'skarmy') {
+      // Ribcage, Spine, Skinny Bones, Sculpted Skull (NO circle!)
+      drawLegs(0.14, vr * 0.24, '#e2e8f0', '#cbd5e1');
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(-vr * 0.06, -vr * 0.24, vr * 0.12, vr * 0.46);
+      // Ribs
+      ctx.fillStyle = '#f8fafc';
+      for (let ry = -0.22; ry <= 0.02; ry += 0.11) {
+        ctx.fillRect(-vr * 0.22, vr * ry, vr * 0.44, vr * 0.06);
+      }
+      // Sculpted Skull
+      ctx.beginPath();
+      ctx.moveTo(-vr * 0.22, -vr * 0.34); ctx.lineTo(-vr * 0.24, -vr * 0.62); ctx.lineTo(0, -vr * 0.72); ctx.lineTo(vr * 0.24, -vr * 0.62); ctx.lineTo(vr * 0.22, -vr * 0.34); ctx.lineTo(vr * 0.12, -vr * 0.26); ctx.lineTo(-vr * 0.12, -vr * 0.26);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(-vr * 0.14, -vr * 0.52, vr * 0.09, vr * 0.1); ctx.fillRect(vr * 0.05, -vr * 0.52, vr * 0.09, vr * 0.1);
+      // Sword
+      ctx.save(); ctx.translate(vr * 0.28, -vr * 0.14); ctx.rotate(swing * dir * 1.4);
+      ctx.fillStyle = '#cbd5e1'; ctx.fillRect(-vr * 0.05, -vr * 0.5, vr * 0.1, vr * 0.5); ctx.strokeRect(-vr * 0.05, -vr * 0.5, vr * 0.1, vr * 0.5);
+      ctx.restore();
+
+    } else {
+      // Shadow Imps: agile goblin body, pointed ears, loincloth, curved dagger
+      drawLegs(0.15, vr * 0.24, '#15803d', '#14532d');
+      ctx.fillStyle = '#16a34a';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.26, -vr * 0.22); ctx.lineTo(vr * 0.26, -vr * 0.22); ctx.lineTo(vr * 0.2, vr * 0.22); ctx.lineTo(-vr * 0.2, vr * 0.22); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#78350f'; ctx.fillRect(-vr * 0.22, vr * 0.06, vr * 0.44, vr * 0.16);
+      // Goblin head + long pointed ears
+      ctx.fillStyle = '#22c55e';
+      ctx.beginPath(); ctx.moveTo(-vr * 0.22, -vr * 0.46); ctx.lineTo(-vr * 0.58, -vr * 0.62); ctx.lineTo(-vr * 0.2, -vr * 0.32); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(vr * 0.22, -vr * 0.46); ctx.lineTo(vr * 0.58, -vr * 0.62); ctx.lineTo(vr * 0.2, -vr * 0.32); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(-vr * 0.22, -vr * 0.56, vr * 0.44, vr * 0.32, 6); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(-vr * 0.12, -vr * 0.46, vr * 0.08, vr * 0.07); ctx.fillRect(vr * 0.04, -vr * 0.46, vr * 0.08, vr * 0.07);
+      ctx.save(); ctx.translate(vr * 0.3, -vr * 0.1); ctx.rotate(swing * dir * 1.4);
+      ctx.fillStyle = '#e2e8f0'; ctx.fillRect(-vr * 0.05, -vr * 0.48, vr * 0.1, vr * 0.48); ctx.strokeRect(-vr * 0.05, -vr * 0.48, vr * 0.1, vr * 0.48);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function drawUnits() {
+    const sorted = [...game.units].sort((a, b) => {
+      if (a.isFlying !== b.isFlying) return a.isFlying ? 1 : -1;
+      return a.y - b.y;
+    });
+
+    for (const u of sorted) {
+      const p = toScreen(u.x, u.y);
+      const r = u.radius * scale;
+      const vr = Math.max(13, r * 2.15);
+      const isBlue = u.side === 'blue';
+      const bob = u.speed > 0 && u.deployTimer <= 0 ? Math.sin(u.walkPhase) * 2.2 : 0;
+      const flyOffset = u.isFlying ? -scale * 0.72 : 0;
+
+      // Long angled directional shadow
+      ctx.fillStyle = u.isFlying ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.ellipse(p.x - vr * 0.22, p.y + vr * 0.48, vr * 0.56, vr * 0.26, -0.25, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawUnitSprite(u, p.x, p.y + flyOffset + bob, r);
+
+      // Deploy timer clock ring at the character's feet (never covering the character!)
+      if (u.deployTimer > 0) {
+        ctx.fillStyle = 'rgba(220, 38, 38, 0.85)';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y + vr * 0.48, vr * 0.28, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (u.deployTimer / 0.9));
+        ctx.lineTo(p.x, p.y + vr * 0.48);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      if (u.hp < u.maxHp || u.maxHp > 600) {
+        const bw = Math.max(22, vr * 1.3);
+        const bh = 4.5;
+        const bx = p.x - bw / 2;
+        const by = p.y + flyOffset - vr - 6;
+        ctx.fillStyle = '#090d16';
+        ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+        ctx.fillStyle = isBlue ? '#0ea5e9' : '#ef4444';
+        ctx.fillRect(bx, by, bw * Math.max(0, u.hp / u.maxHp), bh);
+      }
+    }
+  }
+
+  function drawProjectilesAndEffects() {
+    for (const p of game.projectiles) {
+      const s = toScreen(p.x, p.y);
+      const tx = p.kind === 'spell' ? p.targetX : p.target.x;
+      const ty = p.kind === 'spell' ? p.targetY : p.target.y;
+      const ang = Math.atan2(ty - p.y, tx - p.x);
+
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(ang);
+
+      if (p.kind === 'spell') {
+        // Fiery meteor / arrow volley with glowing wake
+        const grad = ctx.createRadialGradient(0, 0, 2, 0, 0, scale * 0.85);
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.4, p.color);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(0, 0, scale * 0.85, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(254, 240, 138, 0.7)';
+        ctx.beginPath(); ctx.moveTo(0, -scale * 0.25); ctx.lineTo(-scale * 1.1, 0); ctx.lineTo(0, scale * 0.25); ctx.closePath(); ctx.fill();
+      } else {
+        // Directional fletched bolt / arrow
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-scale * 0.36, 0); ctx.lineTo(scale * 0.22, 0); ctx.stroke();
+        ctx.fillStyle = p.color;
+        ctx.beginPath(); ctx.moveTo(scale * 0.34, 0); ctx.lineTo(scale * 0.1, -scale * 0.13); ctx.lineTo(scale * 0.1, scale * 0.13); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    for (const e of game.effects) {
+      const s = toScreen(e.x, e.y);
+      const t = 1 - e.life / e.maxLife;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - t);
+      if (e.kind === 'explosion') {
+        const rad = e.r * scale * (0.35 + 0.65 * t);
+        const g = ctx.createRadialGradient(s.x, s.y, 2, s.x, s.y, rad);
+        g.addColorStop(0, '#fef9c3');
+        g.addColorStop(0.5, e.color);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(s.x, s.y, rad, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, rad * 0.95, 0, Math.PI * 2); ctx.stroke();
+      } else if (e.kind === 'ring') {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, (e.r + (e.maxR - e.r) * t) * scale, 0, Math.PI * 2);
+        ctx.strokeStyle = e.color;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      } else if (e.kind === 'puff') {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, e.r * scale * (1 + t * 0.8), 0, Math.PI * 2);
+        ctx.fillStyle = e.color;
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Floating Damage Numbers
+    for (const ft of game.floatingTexts) {
+      const s = toScreen(ft.x, ft.y);
+      const alpha = Math.min(1, ft.life / ft.maxLife * 1.4);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `800 ${Math.max(10, Math.round(scale * 0.48))}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = '#090d16';
+      ctx.lineWidth = 3;
+      ctx.strokeText(ft.text, s.x, s.y);
+      ctx.fillStyle = ft.color;
+      ctx.fillText(ft.text, s.x, s.y);
+      ctx.restore();
+    }
+  }
+
+  // =========================================================================
+  // 10. HUD & HAND RENDERING
+  // =========================================================================
+  function renderHand() {
+    if (!game) return;
+    handCardsEl.innerHTML = '';
+    game.blueHand.forEach((cardId, idx) => {
+      const c = CARD_MAP[cardId];
+      const canAfford = game.blueElixir >= c.cost;
+      const isSelected = selectedHandIndex === idx;
+
+      const btn = document.createElement('button');
+      btn.className = `battle-card relative h-20 rounded-xl bg-gradient-to-b from-slate-800 to-slate-900 border-2 flex flex-col items-center justify-center p-1 ${
+        isSelected ? 'selected border-amber-400' : (canAfford ? 'playable border-sky-500/60' : 'disabled border-slate-700')
+      }`;
+      btn.innerHTML = `
+        <div class="card-charge-overlay absolute inset-x-0 top-0 bg-slate-950/65 pointer-events-none rounded-t-lg transition-[height] duration-75" style="height: 0%"></div>
+        <span class="absolute -top-2 -left-1.5 w-6 h-6 rounded-full bg-gradient-to-br from-fuchsia-500 to-purple-700 border-2 border-fuchsia-200 text-xs font-display font-bold flex items-center justify-center text-white shadow-md z-10">${c.cost}</span>
+        <img src="${getPortraitUrl(cardId)}" alt="${c.name}" class="w-11 h-11 rounded-lg object-cover border border-amber-300/50 shadow-inner pointer-events-none" />
+        <span class="text-[10px] font-bold text-amber-100 truncate w-full text-center px-0.5 mt-0.5">${c.name.split(' ').pop()}</span>
+      `;
+      btn.onpointerdown = e => {
+        e.preventDefault();
+        sfx.unlock();
+        const wasSelected = selectedHandIndex === idx;
+        btn.dataset.wasSelected = wasSelected ? '1' : '0';
+        selectedHandIndex = idx;
+        isDraggingCard = true;
+        Array.from(handCardsEl.children).forEach((el, i) => {
+          if (i === idx) {
+            el.classList.add('selected', 'border-amber-400');
+            el.classList.remove('border-sky-500/60');
+          } else {
+            el.classList.remove('selected', 'border-amber-400');
+            el.classList.add('border-sky-500/60');
+          }
+        });
+      };
+      handCardsEl.appendChild(btn);
+    });
+
+    const next = CARD_MAP[game.blueNext];
+    if (next) {
+      nextCardSlotEl.innerHTML = `
+        <img src="${getPortraitUrl(game.blueNext)}" alt="${next.name}" class="w-8 h-8 rounded object-cover border border-slate-600" />
+        <span class="text-[9px] font-bold text-fuchsia-300 mt-0.5">${next.cost}⚡</span>
+      `;
+    }
+  }
+
+  function updateHud() {
+    if (!game) return;
+    hudBlueCrowns.textContent = game.blueCrowns;
+    hudRedCrowns.textContent = game.redCrowns;
+
+    const secs = Math.max(0, Math.ceil(game.timeLeft));
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    hudTimer.textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+    hudTimer.className = `font-display font-bold text-base tracking-wide px-2.5 py-0.5 rounded-lg bg-slate-800 border border-slate-700 ${
+      game.overtime ? 'text-rose-400 animate-pulse' : 'text-amber-300'
+    }`;
+
+    const mult = getElixirRate();
+    if (mult > 1) {
+      hudElixirMult.classList.remove('hidden');
+      elixirRateLabel.textContent = '2.0x';
+      elixirRateLabel.className = 'text-[11px] font-bold text-fuchsia-400 shrink-0 w-10 text-right';
+    } else {
+      hudElixirMult.classList.add('hidden');
+      elixirRateLabel.textContent = '1.0x';
+      elixirRateLabel.className = 'text-[11px] font-semibold text-slate-400 shrink-0 w-10 text-right';
+    }
+
+    const whole = Math.floor(game.blueElixir);
+    elixirCountEl.textContent = whole;
+    elixirFillEl.style.width = `${(game.blueElixir / 10) * 100}%`;
+    if (whole >= 10) elixirFillEl.parentElement.classList.add('elixir-full');
+    else elixirFillEl.parentElement.classList.remove('elixir-full');
+
+    const buttons = handCardsEl.children;
+    for (let i = 0; i < buttons.length; i++) {
+      const c = CARD_MAP[game.blueHand[i]];
+      if (!c) continue;
+      const canAfford = game.blueElixir >= c.cost;
+      const chargeEl = buttons[i].querySelector('.card-charge-overlay');
+      if (chargeEl) {
+        const pct = canAfford ? 0 : Math.max(0, Math.min(100, (1 - game.blueElixir / c.cost) * 100));
+        chargeEl.style.height = `${pct}%`;
+      }
+      if (canAfford) {
+        buttons[i].classList.remove('disabled');
+        buttons[i].classList.add('playable');
+      } else {
+        buttons[i].classList.add('disabled');
+        buttons[i].classList.remove('playable');
+      }
+    }
+  }
+
+  function gameLoop(ts) {
+    const dt = Math.min(0.05, (ts - lastTimestamp) / 1000);
+    lastTimestamp = ts;
+
+    updateSimulation(dt);
+    ctx.save();
+    if (game.screenShake > 0) {
+      const mag = game.screenShake * 14;
+      ctx.translate((Math.random() - 0.5) * mag, (Math.random() - 0.5) * mag);
+    }
+    drawArena();
+    drawTowers();
+    drawUnits();
+    drawProjectilesAndEffects();
+    ctx.restore();
+    updateHud();
+
+    if (!game.ended) {
+      animFrameId = requestAnimationFrame(gameLoop);
+    }
+  }
+
+  // =========================================================================
+  // 11. INPUT HANDLERS (CLICK, DRAG-DROP, KEYBOARD 1-4)
+  // =========================================================================
+  function getPointerArenaCoords(e) {
+    const rect = canvas.getBoundingClientRect();
+    return toArena(e.clientX - rect.left, e.clientY - rect.top);
+  }
+
+  canvas.addEventListener('pointermove', e => {
+    if (!game || game.ended) return;
+    pointerArenaPos = getPointerArenaCoords(e);
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    pointerArenaPos = null;
+  });
+
+  canvas.addEventListener('pointerdown', e => {
+    if (!game || game.ended) return;
+    sfx.unlock();
+    if (selectedHandIndex !== null) {
+      const pos = getPointerArenaCoords(e);
+      playCard('blue', selectedHandIndex, pos.x, pos.y);
+    }
+  });
+
+  window.addEventListener('pointermove', e => {
+    if (!isDraggingCard || !game || game.ended) return;
+    const rect = canvas.getBoundingClientRect();
+    if (
+      e.clientX >= rect.left && e.clientX <= rect.right &&
+      e.clientY >= rect.top && e.clientY <= rect.bottom
+    ) {
+      pointerArenaPos = getPointerArenaCoords(e);
+    } else {
+      pointerArenaPos = null;
+    }
+  }, { passive: false });
+
+  window.addEventListener('pointerup', e => {
+    if (!isDraggingCard || !game || game.ended) {
+      isDraggingCard = false;
+      return;
+    }
+    isDraggingCard = false;
+    const rect = canvas.getBoundingClientRect();
+    if (
+      e.clientX >= rect.left && e.clientX <= rect.right &&
+      e.clientY >= rect.top && e.clientY <= rect.bottom &&
+      selectedHandIndex !== null
+    ) {
+      const pos = getPointerArenaCoords(e);
+      playCard('blue', selectedHandIndex, pos.x, pos.y);
+      pointerArenaPos = null;
+    } else if (selectedHandIndex !== null) {
+      const btn = handCardsEl.children[selectedHandIndex];
+      if (btn && btn.dataset.wasSelected === '1') {
+        selectedHandIndex = null;
+        renderHand();
+      }
+    }
+  });
+
+  window.addEventListener('keydown', e => {
+    if (!game || game.ended || !menuOverlay.classList.contains('hidden')) return;
+    if (['1', '2', '3', '4'].includes(e.key)) {
+      const idx = parseInt(e.key, 10) - 1;
+      selectedHandIndex = selectedHandIndex === idx ? null : idx;
+      renderHand();
+    } else if (e.key === 'Escape') {
+      selectedHandIndex = null;
+      renderHand();
+    }
+  });
+
+  document.getElementById('btn-start-battle').onclick = startMatch;
+  document.getElementById('btn-play-again').onclick = startMatch;
+  document.getElementById('btn-edit-deck').onclick = () => {
+    resultOverlay.classList.add('hidden');
+    menuOverlay.classList.remove('hidden');
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    renderDeckBuilder();
+  };
+  document.getElementById('btn-back-menu').onclick = () => {
+    menuOverlay.classList.remove('hidden');
+    if (animFrameId) cancelAnimationFrame(animFrameId);
+    renderDeckBuilder();
+  };
+
+  function syncMuteButtons() {
+    const icon = sfx.muted ? '🔇' : '🔊';
+    document.getElementById('btn-mute').textContent = icon;
+    document.getElementById('btn-menu-mute').textContent = icon;
+  }
+  document.getElementById('btn-mute').onclick = () => { sfx.toggleMute(); syncMuteButtons(); };
+  document.getElementById('btn-menu-mute').onclick = () => { sfx.toggleMute(); syncMuteButtons(); };
+
+  window.addEventListener('resize', () => {
+    resizeCanvas();
+  });
+  window.addEventListener('orientationchange', () => {
+    setTimeout(resizeCanvas, 120);
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', resizeCanvas);
+  }
+
+  window.onload = () => {
+    loadPrefs();
+    renderDeckBuilder();
+    resizeCanvas();
+  };
+})();
+</script>
+</body>
+</html>
